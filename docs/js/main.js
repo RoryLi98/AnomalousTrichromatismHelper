@@ -111,8 +111,11 @@ function resize() {
 }
 
 /**
- * Decide where the picture goes. "fit": the whole camera frame, letterboxed into the space
- * between the top bar and the colour card. "fill": cover the whole screen (crops the frame).
+ * Decide where the picture goes. "fit": the whole camera frame, as large as the space between
+ * the top bar and the toolbar allows. If it fits above the colour card it is centred there;
+ * otherwise it stays large, pinned under the top bar, and the card overlays its lower edge
+ * (shrinking it to fit above the card made a portrait camera frame tiny on phones whose browser
+ * bars take part of the screen). "fill": cover the whole screen (crops the frame).
  */
 function layout() {
   const W = R.W, H = R.H;
@@ -120,17 +123,17 @@ function layout() {
   let rect = { x: 0, y: 0, w: W, h: H };
   if (S.frame === 'fit' && sw && sh) {
     const top = document.querySelector('.topbar').getBoundingClientRect().bottom;
-    // a fixed reserve above the toolbar for the colour card, so the picture does not jump
-    // whenever the card text changes height
     const toolbarTop = document.querySelector('.toolbar').getBoundingClientRect().top;
+    // a fixed reserve for the colour card (or collapsed panel), so the picture never jumps
+    // when the card text changes height
     const reserve = S.mode === 'identify' ? CARD_RESERVE : PANEL_RESERVE;
-    const bottom = toolbarTop - reserve;
-    let ay = top, ah = bottom - top;
+    let ay = top, ah = toolbarTop - top;
     if (ah < H * 0.35) { ay = 0; ah = H; } // not enough room: use the whole screen
     const sa = sw / sh;
     let rw = W, rh = W / sa;
     if (rh > ah) { rh = ah; rw = ah * sa; }
-    rect = { x: (W - rw) / 2, y: ay + (ah - rh) / 2, w: rw, h: rh };
+    const free = ah - reserve;
+    rect = { x: (W - rw) / 2, y: rh <= free ? ay + (free - rh) / 2 : ay, w: rw, h: rh };
   }
   const changed = ['x', 'y', 'w', 'h'].some((k) => Math.abs(rect[k] - R.rect[k]) > 0.5);
   R.rect = rect;
@@ -277,8 +280,19 @@ function readAnalysisFrame(c) {
   return aCtx.getImageData(0, 0, AW, AH);
 }
 
-/** Colour identification (reticle, card, region) only runs in Identify mode. */
-function idVisible() { return S.mode === 'identify'; }
+/** Colour identification (reticle, card, region) only runs in Identify mode, and pauses while
+ *  the white-balance panel is open so the picture stays clear for aiming at the white card. */
+function idVisible() { return S.mode === 'identify' && !wbOpen(); }
+function wbOpen() { return !$('wbPop').hidden; }
+function setWBOpen(open) {
+  $('wbPop').hidden = !open;
+  app.classList.toggle('wb-open', open);
+  syncWBUI();
+  R.smooth = null; R.shownKey = null;
+  drawOverlay();
+  placeReticle(); updateZoomChips(); placeFloating();
+  requestAnalysis();
+}
 
 // ---------------- analysis (patch on the main thread, region + auto WB in a worker) ----------------
 function initWorker() {
@@ -675,7 +689,7 @@ function currentZoom() { return hwZoomActive() ? camera.zoom : R.zoom; }
 function updateZoomChips() {
   const box = $('zoomChips');
   const levels = zoomLevels();
-  const show = levels.length > 1 && !(S.mode === 'correct' && !S.cpCollapsed);
+  const show = levels.length > 1 && (wbOpen() || !(S.mode === 'correct' && !S.cpCollapsed));
   box.hidden = !show;
   if (!show) return;
   const cur = currentZoom();
@@ -725,22 +739,24 @@ function setRangePos(p, hud = true) {
 /** For tests: set the tolerance multiplier directly. */
 function setSens(v) { setRangePos(sensToPos(v), false); }
 
-/** Position the reticle, range slider and zoom chips relative to the picture. */
+/** Position the range slider (right edge) and zoom chips (left edge) on the visible part of the
+ *  picture, i.e. above the colour card / panel that may overlay its lower edge. */
 function placeFloating() {
   const rc = R.rect;
-  const rng = $('rangeCtl');
-  rng.hidden = !(R.source && idVisible() && (S.outline || S.dim));
-  rng.style.top = `${rc.y + rc.h / 2}px`;
-  rng.style.right = `${Math.max(6, R.W - (rc.x + rc.w) + 6)}px`;
-  const chips = $('zoomChips');
   // top of the bottom stack (colour card, white-balance popover or correction panel)
   const stack = [...document.querySelectorAll('.bottom > *')].filter((el) => el.offsetParent);
-  const cardTop = stack.length ? stack[0].getBoundingClientRect().top : R.H - 80;
-  const below = rc.y + rc.h + 4;
-  // below the picture when there is room (fit mode), otherwise inside its bottom edge
-  chips.style.top = `${below + 42 <= cardTop ? below : Math.min(rc.y + rc.h, cardTop) - 46}px`;
-  chips.style.left = `${rc.x + rc.w / 2}px`;
-  $('hud').style.top = `${rc.y + 12}px`;
+  const stackTop = stack.length ? stack[0].getBoundingClientRect().top : R.H - 80;
+  const visTop = Math.max(rc.y, document.querySelector('.topbar').getBoundingClientRect().bottom);
+  const visBottom = Math.max(visTop + 120, Math.min(rc.y + rc.h, stackTop - 6));
+  const mid = (visTop + visBottom) / 2;
+  const rng = $('rangeCtl');
+  rng.hidden = !(R.source && idVisible() && (S.outline || S.dim));
+  rng.style.top = `${mid}px`;
+  rng.style.right = `${Math.max(6, R.W - (rc.x + rc.w) + 6)}px`;
+  const chips = $('zoomChips');
+  chips.style.top = `${mid}px`;
+  chips.style.left = `${Math.max(6, rc.x + 6)}px`;
+  $('hud').style.top = `${visTop + 12}px`;
 }
 
 // ---------------- UI wiring ----------------
@@ -818,7 +834,10 @@ function syncWBUI() {
   let desc = t('wb.desc.' + S.wbMode);
   if (S.wbMode === 'manual' && S.wbCalibrated) desc = t('wb.desc.manualDone', { lock: S.wbLocked ? t('wb.locked') : '' });
   $('wbDesc').textContent = desc;
+  // before the first white-card calibration the hint sits on the picture next to the target
+  $('wbDesc').hidden = S.wbMode === 'manual' && !S.wbCalibrated;
   $('btnWBCal').hidden = S.wbMode !== 'manual';
+  app.classList.toggle('wb-manual', S.wbMode === 'manual');
   updateToolbar();
 }
 
@@ -891,6 +910,7 @@ async function calibrateWB() {
     applyWB(); syncWBUI();
     R.smooth = null; R.shownKey = null; requestAnalysis();
     toast(t('toast.wbDone'));
+    setWBOpen(false); // done: give the picture back to colour identification
   } finally {
     btn.disabled = false;
     btn.querySelector('span').textContent = t('wb.calibrate');
@@ -930,12 +950,8 @@ function bind() {
   });
 
   // white balance popover
-  $('btnWBTool').addEventListener('click', () => {
-    const pop = $('wbPop');
-    pop.hidden = !pop.hidden;
-    syncWBUI();
-  });
-  $('wbClose').addEventListener('click', () => { $('wbPop').hidden = true; updateToolbar(); });
+  $('btnWBTool').addEventListener('click', () => setWBOpen(!wbOpen()));
+  $('wbClose').addEventListener('click', () => setWBOpen(false));
   document.querySelectorAll('#wbSeg button').forEach((b) => b.addEventListener('click', () => setWBMode(b.dataset.wb)));
   $('btnWBCal').addEventListener('click', calibrateWB);
 
@@ -1044,12 +1060,12 @@ function bindGestures() {
     if (pts.size === 0) {
       if (tap && !dragSplit && performance.now() - tap.t < 400) {
         const now = performance.now();
-        if (S.mode === 'correct' && !S.cpCollapsed) {
+        if (S.mode === 'correct' && !S.cpCollapsed && !wbOpen()) {
           // first tap on the picture just tucks the correction panel away
           S.cpCollapsed = true; save(); syncCorrectUI(); updateZoomChips(); tap = null; return;
         }
-        if (!$('wbPop').hidden && S.wbMode !== 'manual') { $('wbPop').hidden = true; updateToolbar(); }
-        if (!idVisible()) { tap = null; return; } // Correct mode: no reticle
+        if (wbOpen() && S.wbMode !== 'manual') setWBOpen(false);
+        if (!idVisible() && !wbOpen()) { tap = null; return; } // Correct mode: no reticle (except to aim the white card)
         if (now - lastTap < 320) { setReticle(0.5, 0.5); lastTap = 0; }
         else if (inRect(tap.x, tap.y)) { setReticle((tap.x - R.rect.x) / R.rect.w, (tap.y - R.rect.y) / R.rect.h); lastTap = now; }
       }

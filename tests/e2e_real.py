@@ -67,17 +67,23 @@ with sync_playwright() as p:
     page.screenshot(path=f'{OUT}/r_paper_auto.png')
     page.click('#btnWBTool'); page.wait_for_timeout(200)
     page.click('#wbSeg button[data-wb=off]')
+    page.click('#wbClose')  # colour ID is paused while the white-balance panel is open
     settle(page, 3)
     results['paper_off'] = page.evaluate(STATE)
+    page.click('#btnWBTool'); page.wait_for_timeout(200)
     page.click('#wbSeg button[data-wb=manual]')
-    page.wait_for_timeout(200)
+    page.wait_for_timeout(600)
     page.screenshot(path=f'{OUT}/r_wb_pop.png')
+    results['wb_view'] = page.evaluate("""() => ({ card: getComputedStyle(document.getElementById('card')).display,
+        range: getComputedStyle(document.getElementById('rangeCtl')).display,
+        tip: getComputedStyle(document.querySelector('#reticle .tip')).display,
+        region: window.__cvh.R.lastRes })""")
     page.click('#btnWBCal')
     page.wait_for_timeout(1500)
+    results['wb_closed_after_cal'] = page.evaluate("() => document.getElementById('wbPop').hidden")
     settle(page, 3)
     results['paper_manual'] = page.evaluate(STATE)
     results['manual_gains'] = page.evaluate("() => window.__cvh.S.wb")
-    page.click('#wbClose')
 
     # range control changes the region size
     vx, vy = frame_to_view(page, *POINTS['cup'][:2])

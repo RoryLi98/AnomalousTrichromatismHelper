@@ -1,311 +1,229 @@
-# AnomalousTrichromatismHelper · 色觉助手 Color Vision Helper
+<div align="center">
 
-一个给色弱 / 色盲用户用的手机 Web App（PWA）：打开摄像头，准星对准哪里就读出哪里的颜色，并勾出同色色块的轮廓；“矫正”模式在 GPU 上实时处理视频，让色弱用户看到的颜色尽量接近正常色觉。
+<img src="docs/icons/icon-192.png" width="88" alt="色觉助手图标">
 
-A mobile web app (PWA) for people with color-vision deficiency (CVD): point the reticle at anything to get its color name and an outline of the color region, or switch to Correct mode to see the camera feed recolored in real time.
+# 色觉助手 · Color Vision Helper
 
-- 中文 / English 一键切换
-- 全部在手机本地处理，视频不上传
-- Android（Chrome / Edge / 三星浏览器）和 iPhone（Safari，iOS 15+）都能用，可“添加到主屏幕”像 App 一样全屏打开
+**给色弱、色盲用户的手机颜色助手：对准就读出颜色，打开矫正就能分清红绿。**
 
-## 功能
+[**在线打开 →**](https://ruilin.li/AnomalousTrichromatismHelper/) &nbsp;·&nbsp; [English](README.en.md)
 
-| 功能 | 说明 |
-| --- | --- |
-| 实时识色 | 屏幕中央小十字准星。默认按**整个色块的代表颜色**命名（忽略阴影最暗和反光最亮的部分），色块太小或是细节时才用准星处的像素；颜色处在两类之间时提示“也可能被叫作 X”；过曝 / 太暗时给出提示 |
-| 两套颜色组 | **基础**：红、橙、黄、绿、青、蓝、紫、粉、棕、白、灰、黑 12 色。**精细**：150+ 中英文颜色名（如“橄榄绿 / Olive green”），再加一句系统描述（如“深黄绿色 / dark yellow-green”“偏蓝的灰色 / bluish gray”）和所属色系 |
-| 色块分割 | 面向真实场景：同一物体的亮面和阴影面算一块，布料、木纹、毛发这类纹理不会碎成小块，反光高光自动填补，不会顺着细缝漏到旁边相近的颜色里。画面右侧有“范围”滑条（非线性：下半段用来细调小范围，默认在中间），在画面上上下滑动也能调 |
-| 镜头与取景 | “镜头”面板列出手机所有摄像头（主摄 / 超广角 / 长焦 / 前置），选中后会记住；第一次如果浏览器默认给了长焦，会自动换成主摄。默认请求 4:3 全传感器画面，用“完整画面”显示，不再被裁剪放大，也可以切到“填满屏幕”。支持硬件变焦的手机显示 0.5× / 1× / 2× 按钮 |
-| 白平衡 | 默认**自动**：从画面里的白色、灰色物体估计灯光偏色，平滑后校正（正在测的物体不参与估计），并提示“灯光偏暖，已自动校正”。工具栏“白平衡”一键打开：自动 / 白纸校准 / 关闭；白纸校准时把准星对准白纸点一下即可，安卓上还会锁定相机自身的白平衡 |
-| 终极模式：实时矫正 | 只做实时颜色处理，不识色（准星、颜色卡、色块轮廓都会隐藏，画面更干净）。红色弱 / 绿色弱 / 蓝色弱 + 程度 0–100%；方法：自动、**平衡**（推荐）、自然、强力、模拟色弱，强度 0–150%（强力可到 200%，用于看色盲检查图）；分屏对比（可拖动分隔线）、“以色弱视角预览”（给正常色觉的人验证效果） |
-| 调校 | 约 2 分钟、两步：先用圆环点阵测出色弱类型和程度，再用**低于你分辨极限**的图案盲测矫正效果（矫正 / 未矫正随机混排），看不清就自动加强，最后给出“未矫正 x/3 → 矫正后 y/4”和推荐设置，一键应用（手机屏幕未校色，结果仅供参考） |
-| 其他 | 冻结画面、从相册选图、补光灯、双指缩放、点击移动准星 / 双击回中、语音朗读颜色名、点击 HEX 复制 |
+<a href="https://ruilin.li/AnomalousTrichromatismHelper/"><img src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-1.3.1-2ea44f" alt="版本 1.3.1"></a>
+<img src="https://img.shields.io/badge/PWA-%E5%8F%AF%E5%AE%89%E8%A3%85%E5%88%B0%E4%B8%BB%E5%B1%8F%E5%B9%95-5a0fc8" alt="PWA">
+<img src="https://img.shields.io/badge/%E7%9F%AB%E6%AD%A3-WebGL_%E5%AE%9E%E6%97%B6-d9480f" alt="WebGL 实时矫正">
+<img src="https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Android_%7C_iOS_15%2B-1f6feb" alt="Android / iOS 15+">
+<img src="https://img.shields.io/badge/%E9%9A%90%E7%A7%81-%E5%85%A8%E9%83%A8%E6%9C%AC%E5%9C%B0%E5%A4%84%E7%90%86-2ea44f" alt="全部本地处理">
 
-## 在手机上使用
+<br><br>
 
-摄像头只能在 **HTTPS** 页面里打开，所以需要把 `docs/` 部署到一个 https 地址。最简单的是 GitHub Pages：
+<img src="assets/screens-zh.png" width="860" alt="识色、矫正、调校三个界面截图">
 
-1. 把仓库推送到 GitHub（`git add docs tests package.json README.md .gitignore && git commit && git push`）。
-2. 在 GitHub 仓库页面 → **Settings → Pages** → Build and deployment 选 **Deploy from a branch**，Branch 选 `main`，文件夹选 **`/docs`**，保存。这个项目仓库里**不要**再填 Custom domain：用户主页仓库已经绑定了 `ruilin.li`，项目页面会自动挂在它下面。
-3. 约 1 分钟后用手机打开 **https://ruilin.li/AnomalousTrichromatismHelper/**，允许摄像头权限。
-4. 想像 App 一样使用：Android Chrome 菜单 →“添加到主屏幕 / 安装应用”；iPhone Safari 分享按钮 →“添加到主屏幕”。
+<sub>左：识色，准星对准杯子，读出“枣红”并勾出整个色块 · 中：矫正，分屏对比原图和给绿色弱看的画面 · 右：调校，两步测出你的色觉并检验矫正效果</sub>
 
-> 仓库设为 private 时，GitHub Pages 需要 GitHub Pro / Team / Enterprise（学生可通过 GitHub Student Developer Pack 免费获得 Pro）。即使仓库是私有的，Pages 网站本身仍然是公开可访问的，只有源码不公开。
-
-（也可以把 `docs/` 文件夹拖到 Netlify Drop 等任意静态托管服务，只要是 https 即可。）
-
-### 怎么用
-
-- **识色**：把准星对准物体。顶部切换“识色 / 矫正”，卡片右下角切换“基础 / 精细”颜色组，喇叭按钮朗读。点画面任意位置移动准星，双击回到中心。
-- **色块范围**：默认在中间。相近的两种颜色被圈成一块时往下调，下半段刻度很细，适合微调；反光、阴影多的物体没被整个圈住时往上推（或在画面上向上滑）。
-- **画面像被放大**：工具栏“镜头”→ 选“完整画面”，或换一个后置镜头；有 0.5× 按钮的手机可以点 0.5×。
-- **矫正**：先点“调校”（没调校过时按钮是黄色的），或手动选择类型和程度。方法一般用“自动”：色弱用“平衡”，接近色盲（≥90%）用“强力”。觉得不够明显就把强度推到 130–150% 或换“强力”；“自然”颜色最接近原样，但只适合较轻的色弱。
-- **看色盲检查图（圆点数字图）**：选“强力”，强度推到 170–200%，让图案占满画面、光线均匀、避开反光。数字会变成偏亮的蓝色，背景变成黄色。“强力”不依赖类型和程度设置，测不准也有效。打开“分屏对比”可以左右对照原图和处理后的画面。点一下画面可以收起面板。
-- **白平衡**：一般保持“自动”。灯光很怪（暖黄灯、LED、霓虹）或画面里没有白色 / 灰色东西时：工具栏“白平衡”→“白纸校准”→ 准星对准白纸 → 点“校准”。换了地方要重新校准。
-
-## 算法
-
-参考了 `论文资料/` 里的文献，并换成了更新的颜色模型：
-
-- **颜色空间**：sRGB → 线性 RGB → OKLab / OKLCH（Ottosson 2020，感知均匀，计算便宜，适合在手机上每帧处理）和 CIELAB（D65）。
-- **基础色命名**：在 OKLCH 上按色相角、明度、彩度划分 12 类（棕色 = 暗的橙/黄色，粉色 = 亮的红/玫红色等），阈值相对于每个色相的 sRGB 色域顶点（cusp）计算。
-- **精细色命名**：CIEDE2000 色差找最近的命名颜色；色差 > 12 时名字前加“≈”。系统描述由色相（15 段）+ 明度/彩度修饰词组合生成。
-- **色块分割**（在 Web Worker 里运行，不卡界面）：思路参考何志良等《基于图像分割的局部色盲矫正方法》，即用色度而不是亮度来分割。具体步骤：
-  1. 降采样到约 8 万像素，转 OKLab，做 5×5 均值滤波。
-  2. 用**抗阴影色度** (a/L, b/L)：阴影相当于把线性 RGB 乘一个系数，此时 OKLab 的 L、a、b 按同一比例缩放，所以这个比值不变。
-  3. 彩色物体：色差分解成**色相方向**（容差严）和**饱和度方向**（容差松，因为高光和深影会变淡），再加一项对数亮度比（容差约 2.3 倍）。白、灰、黑这类中性色主要看亮度。
-  4. 容差根据准星周围纹理的鲁棒离散度（MAD，只统计同一表面的像素）**自动放宽**，再乘上用户的“范围” k = 0.15 + 1.85·p²（p 是滑条位置，默认 0.5 → k≈0.6）。亮度容差只按 √k 缩小，这样调小范围时同一物体的阴影面不会被切掉。
-  5. **滞后生长**：很像的“核心”像素可以自由扩散，“边缘”像素最多只能延伸 4 个像素，所以不会通过细小接触漏进外观相近的邻居。
-  6. 开运算断开细桥，只保留连通域；闭运算加小孔填充（反光、文字）；时间平滑；Marching Squares 提取亚像素轮廓。
-  7. 色块的代表颜色：去掉最暗 15% 和最亮 10%，取色度中位数，亮度取 60 分位。用真实照片（咖啡杯放在木桌上、宇航服、摩托车、猫）验证过：杯子不会漏进颜色相近的木桌。
-- **自动白平衡**：先取最亮 15% 的像素做灰度世界估计，再两轮挑出接近中性灰的像素估计光源；正在测的物体不参与估计；按灰像素比例决定校正强度，并做限幅和时间平滑。白纸校准直接用参考白计算各通道增益。
-- **色弱模拟**：Machado, Oliveira & Fernandes (2009) 生理模型，程度 0–1 按 0.1 间隔插值，作用于线性 RGB。
-- **自然（纯补偿）**：Ro & Yang (2004)《Color adaptation for anomalous trichromats》的逆变换 `A = T_abnormal⁻¹ · T_normal · c`，即对模拟矩阵求逆，使 `M·A = c`。屏幕显示不出的颜色按像素朝自身亮度的灰色收缩（保持色相的色域映射），所以色弱者看到的是色相正确、饱和度略低的颜色；红/绿色弱程度越高，能补回来的越少（100% 时矩阵奇异）。
-- **平衡（v1.3 起默认）**：先做上面的补偿；再用模型算出补偿后色弱者**仍然看不到**的那部分红绿（或蓝黄）差异 `e = OKLab(c) − OKLab(sim(补偿后))`（a 或 b 分量），把它编码到对方看得见的另一条对立轴和明度上（`b −= 1.5·e`，`L += 0.35·e`，红色弱 0.5）。补偿得了的部分保持自然，补偿不了的部分也不会丢。
-- **强力**：在 OKLab 中把整条混淆轴（红绿 a 或蓝黄 b）叠加到可见轴和亮度上，区分度最高但颜色变化明显，适合色盲。
-- **为什么 v1.2 的矫正“不太管用”**：从 5 张自然照片和日常颜色里取 5159 对色差 ΔE 12–60 的颜色，用 Machado 模型的色弱观察者统计“原本分不清、处理后分得清”的比例。纯补偿在类型和程度都设对时：绿色弱 60% 恢复 70%，80% 只剩 53%，100% 只有 10%（屏幕色域不够，越重越补不回来）；而且对设置很敏感：用默认“绿色弱 60%”去看绿色弱 95% 的人只恢复 21%，红色弱被当成绿色弱时 39%。“平衡”在同样条件下恢复 82% / 91% / 79%（100% 时自动改用强力：97%），设置不准时仍有 72–90%。GPU 着色器与 CPU 参考实现逐像素对比，误差为 0，所以问题出在算法选择，不是代码错误。
-- **色盲检查图测试**：自己生成了 6 张 Ishihara 式点阵图（数字 74、8、29、5、45、3；图案和背景只在红/绿色盲混淆线上不同，每个圆点亮度随机，难度从易到难），模拟手机拍摄（暖光、镜头模糊、噪声、手抖、4:2:0 色度采样）后送进 App 的虚拟摄像头，截下矫正后的画面，再用色弱模型模拟观看，按每个圆点统计图案与背景的可分度 d′。正常人看原画面 d′ = 2.8–7.0；绿色盲不矫正 0.1–1.6（看不见）；“强力 200%”后绿色盲 3.9–16.3、绿色弱 80% 4.0–15.8，六张都达到或超过正常人的水平。“平衡”在程度设对或偏高时也能看清，但程度设得偏低时（设 60%、实际 100%）只有 0.1–3.2，所以看检查图请用“强力”。强力 100% 以上，亮度项按 (强度 − 1)² 加大，让图案同时变亮，压过检查图故意加的亮度噪声；100% 及以下与之前完全一样。
-- **调校**：第一步类似 Cambridge Colour Test 的点阵 Landolt C，亮度随机抖动以排除亮度线索；三个刺激方向取 Machado 红/绿/蓝全色盲矩阵的最小奇异向量（各自最难看出的颜色方向），2-down/1-up 阶梯法分别求阈值。判定时做联合拟合：对每个假设（类型, 程度），在阈值处模型预测的感知色差应在三个方向上相等，取 log ΔE 方差最小的假设；个人的检测灵敏度（与屏幕、环境光有关）作为自由参数一起拟合，所以不依赖屏幕校色。用模拟观察者验证：正常→正常，绿色弱 80%→75–85%，红色弱 70%→70%，蓝色盲→85–95%。蓝色弱极少见，而蓝黄方向的测量噪声容易造成误判，所以判为蓝色弱需要更明显的证据。第二步不再完全相信模型：在测得阈值的 60% 处出图（本人未矫正时看不清），4 张经过矫正、3 张不矫正，随机混排；矫正后 4 张里看清 3 张算通过，否则依次尝试“平衡 · 程度 +25% · 强度 130%”→“强力 100%”→“强力 150%”。模拟测试中，绿色弱 50–90%、红色弱 70–100%、蓝色弱 80–100% 的观察者在 78–100% 的测试里都得到了通过验证的设置；红色弱有时会被测成绿色弱，但“平衡”对这种误差不敏感，验证照样通过。
-- **渲染**：WebGL 1.0 片元着色器逐像素处理（兼容老 iPhone），分析时只把降采样后的小图从 GPU 读回 CPU。
-
-单元测试（26 项）覆盖：CIEDE2000（Sharma 2005 参考数据）、颜色命名与“也可能是”、Machado 矩阵、补偿后色相保持与红绿区分度提升（如绿色弱 50%：区分度 ΔE 19 → 37）、强阴影、纹理、细缝漏边、孔洞填充、自动白平衡、镜头名称识别、自测拟合、“平衡”在设置不准时仍优于纯补偿、调校流程（模型观察者走完两步，矫正后能看清阈值以下的图）、Ishihara 式点阵图（绿色盲不矫正看不见，强力 200% 后达到正常人水平）。端到端测试把真实照片当作虚拟摄像头画面，检查命名、白平衡、范围调节、镜头面板和取景切换。
-
-## 本地开发与测试
-
-```bash
-npm start                 # http://localhost:8765 （localhost 允许摄像头）
-npm test                  # 单元测试（Node 18+）
-npm run test:e2e          # 端到端：合成摄像头视频 + Playwright Chromium（需 numpy、Pillow、ffmpeg、playwright）
-python3 tests/make_photo_scene.py 某张照片.png /tmp/real.y4m && python3 tests/e2e_real.py /tmp/real.y4m /tmp/shots   # 用真实照片做虚拟摄像头
-```
-
-文件结构：
-
-```
-docs/                 ← 网站根目录（GitHub Pages 从这里发布）
-  index.html  manifest.webmanifest  sw.js（离线缓存）  icons/
-  css/style.css
-  js/main.js       界面与主循环          js/gl.js        WebGL 渲染与矫正着色器
-  js/color.js      颜色空间与 CIEDE2000  js/naming.js    基础/精细颜色命名
-  js/cvd.js        模拟/补偿/平衡/强力   js/machado.js   Machado 2009 矩阵
-  js/segment.js    色块分割 + 轮廓       js/selftest.js  色觉调校
-  js/wb.js         自动白平衡            js/analysis-worker.js  后台分析线程
-  js/camera.js     镜头选择/变焦/补光/白平衡锁定   js/i18n.js  中英文文案
-tests/  unit.test.mjs  e2e.py  e2e_real.py  make_scene.py  make_photo_scene.py
-```
-
-## 局限
-
-- 手机摄像头的自动白平衡和曝光会改变颜色。自动白平衡在画面里没有白色或灰色、或被大面积米色占满时可能不准，这时用白纸校准。颜色名描述的是物体在当前光线下的样子。
-- iPhone 的 Safari 不允许网页锁定相机白平衡或曝光，所以白纸校准只做软件校正；安卓 Chrome 会同时锁定相机的白平衡。
-- 安卓的镜头名称通常是“camera2 0, facing back”这类编号，App 只能显示为“后置摄像头 1 / 2 …”，需要逐个点一下试。
-- “自然”模式受屏幕色域限制，程度越高能还原的越少，所以默认用“平衡”。“平衡”和“强力”会改变部分颜色的明暗和偏黄 / 偏蓝程度，目的是让你分得开，不是颜色本来的样子。
-- 调校在未校色的手机屏幕上只是粗略估计（第二步的盲测能纠正一部分误差），不能替代医院的色觉检查（如 Ishihara、FM-100、色觉镜）。
+</div>
 
 ---
 
-## 研究笔记（原 README）
+## 它能做什么
 
-Help anomalous trichromatism to pass the test
-考虑算法所使用的颜色空间  
-学习不同色弱/色盲的分辨力区别
-考虑帮助色弱/色盲分辨观看图像的UI设计
-考虑Mobile端分析颜色RGB模式及色盲模式的算法设计
-考虑Mobile端的UI设计  
+- **识色**：屏幕中央有一个小十字准星，对准什么就读出什么颜色，同时勾出同一种颜色的整块区域。阴影、反光、布料纹理不会把一个物体切碎，也不会顺着细缝漏到旁边相近的颜色里。
+- **两套颜色名**：基础 12 色（红、橙、黄、绿……），或 150 多个精细名称（如“砖红”“橄榄绿”），附带“深黄绿色”这类系统描述；颜色在两类之间时会提示“也可能被叫作……”。
+- **实时矫正**：在 GPU 上逐像素处理摄像头画面，把你分不清的红绿差异转成你看得见的明暗和蓝黄差异。可选红色弱、绿色弱、蓝色弱三种类型和 0–100% 程度，支持分屏对比。
+- **调校**：约 2 分钟的两步小测试。先测出类型和程度，再用低于你分辨极限的图案盲测矫正效果，不够清楚就自动加强。
+- **看色盲检查图**：用“强力”模式把强度推到 170–200%，点阵图里的数字会变成黄色背景上的亮蓝色。
+- **为真实场景设计**：自动白平衡（也可一键用白纸校准）、镜头选择（主摄 / 超广角 / 长焦）、完整 4:3 取景、变焦、补光灯、冻结画面、从相册选图、语音朗读。
+- **中文 / English** 一键切换；视频只在手机本地处理，不上传。
 
-Desktop端实现思路：Python + OpenCV
-Mobile端实现思路：Android studio + OpenCV-Android-SDK (Java!!!)
-先从调用手机摄像头开始，后熟悉OpenCV-Android-SDK的Sample
-先从色盲/色弱的理论知识先准备。 
+## 效果
 
-A New Color Blindness Cure Model Based on BP Neural Network
-Visual contents adaptation for colour vision deficiency
-A fixed transformation of color images for dichromats based on similarity matrices
+### 日常场景
 
-准备知识：
-LSM颜色空间
-人眼LSM视锥细胞
-原理：颜色空间几何变换映射
+<img src="assets/before-after.jpg" alt="同一张照片：原图、绿色弱看到的、仅补偿后、平衡后">
 
-图像处理四种矫正色盲的算法：
-自适应的矫正算法
-旋转H分量的矫正算法
-几何变换的矫正算法
-角度自适应的矫正算法
+用色弱模型模拟“绿色弱 80% 的人看到的样子”。只做补偿（“自然”）受屏幕色域限制，红色被压成灰褐色；“平衡”把补不回来的部分转成蓝黄和明暗差异，红色的摩托车和绿色的东西重新分得开。
 
+| 原本分不清、处理后分得清的颜色对 | 自然（仅补偿） | 平衡 | 强力 |
+| --- | :---: | :---: | :---: |
+| 绿色弱 60% | 70% | 82% | 93% |
+| 绿色弱 80% | 53% | 91% | 96% |
+| 绿色盲 100% | 10% | 79% | 97% |
+| 红色弱 80% | 63% | 88% | 94% |
+| 红色盲 100% | 15% | 91% | 97% |
 
-1．按使用类别分类
+<sub>样本：5 张自然照片和常见颜色中取出的 5159 对颜色（色差 ΔE 12–60），类型和程度设置正确。“自动”在程度 ≥ 90% 时选强力，其余选平衡。设置不准时（全部按默认“绿色弱 60%”），“自动”仍能恢复 67–90%，纯补偿只剩 21–39%。强力的区分度最高，但颜色改变也最大。</sub>
 
-彩色色度学模型：CIE-RGB、CIE-XYZ、均匀色差彩色模型（CIE 1976Luv和CIE Lab）
+### 色盲检查图
 
-工业彩色模型：RGB彩色显示模型、CMYK彩色印制模型、彩色传输模型YUV（PAL）、YIQ（NTSC）、YCrCb（数字高清晰度电视）
+<img src="assets/color-plates.jpg" alt="6 张 Ishihara 式点阵图：正常人、绿色弱、绿色盲在不矫正和强力 200% 下看到的样子">
 
-视觉彩色模型：HVC（孟赛尔）、HSB（Photoshop）、HLS（Windows画图和Apple Color Picker）、HSI（图像分割）、HSY（电视）、Ohta（图像分割）等。
+6 张自制的 Ishihara 式点阵图（数字和背景只在红绿混淆方向上不同，圆点亮度随机），先模拟手机拍摄（暖光、模糊、噪声、手抖、色度压缩），再走一遍 App 的完整处理流程，最后用色弱模型模拟观看。不矫正时绿色弱 80% 和绿色盲都看不出数字；强力 200% 后六张都能看清，可分度（d′ 3.9–16.3）达到或超过正常人看原图的水平（2.8–7.0）。
 
-2．按颜色感知分类
+## 开始使用
 
-混合颜色模型：按3种基色的比例混合而成的颜色。RGB、CMYK、XYZ等
+1. 用手机浏览器打开 **https://ruilin.li/AnomalousTrichromatismHelper/**，允许使用摄像头。
+2. 想像 App 一样全屏使用：Android Chrome 菜单 →“添加到主屏幕 / 安装应用”；iPhone Safari 分享按钮 →“添加到主屏幕”。
+3. 第一次进入“矫正”时，先点黄色的 **调校** 按钮做一次测试，再点“应用到矫正”。
 
-非线形亮度/色度颜色模型：用一个分量表示非色彩的感知，用两个分量表示色彩的感知，这两个分量都是色差属性。L*a*b、L*u*v、YUV、YIQ等。
+| 我想…… | 这样做 |
+| --- | --- |
+| 知道某样东西是什么颜色 | “识色”模式下把准星对准它；点画面任意位置移动准星，双击回中 |
+| 色块圈得太大 / 太小 | 右侧“范围”滑条往下调（相近颜色被圈在一起时）或往上推（阴影、反光多的物体没圈全时），也可在画面上上下滑动 |
+| 看清红绿 | 切到“矫正”；方法用“自动”，不够明显就调高强度或换“强力” |
+| 看色盲检查图 | “强力”，强度 170–200%；让图占满画面，光线均匀，避开反光 |
+| 灯光太黄 / 太蓝 | 工具栏“白平衡”→“白纸校准”，准星对准白纸点一下 |
+| 画面像被放大了 | 工具栏“镜头”→ 选“完整画面”，或换一个后置镜头 |
 
-强度/饱和度/色调模型：用强度描述亮度或灰度等光强的感知，用饱和度和色调描述色彩的感知，这两个分量接近人眼对颜色的感觉。如HIS、HSL、HSV、LCH等
+## 工作原理
 
+```mermaid
+flowchart LR
+    CAM["摄像头<br/>4:3 全画面"] --> GPU["WebGL 着色器<br/>白平衡 + 逐像素矫正"]
+    GPU --> SCR["屏幕"]
+    GPU -- "降采样读回" --> WK["Web Worker<br/>白平衡估计 · 色块分割"]
+    WK -- "白平衡增益" --> GPU
+    WK --> NAME["颜色命名<br/>OKLCH / CIEDE2000"]
+    NAME --> UI["轮廓 + 颜色卡"]
+```
 
-1.全色盲
-全色盲是色盲中最为严重的，也是极为少见的一种色盲，属于完全性视锥细胞功能障碍（三种锥细胞缺失），与夜盲（视杆细胞功能障碍）恰好相反，患者尤喜暗、畏光，表现为昼盲。
-全色盲不能识别颜色，只能感知亮度信息，七彩世界在其眼中是一片灰暗，如同观黑白电视一般仅有明暗之分，而无颜色差别。
-而且所见红色发暗、蓝色光亮、此外还有视力差、弱视、中心性暗点、摆动性眼球震颤等症状。
+<details>
+<summary><b>识色与色块分割</b></summary>
 
-2.红二色盲
-又称第一色盲，是由于L锥细胞的缺失造成的。患者主要是不能分辨红色。对(红色与深绿色)、(蓝色与紫红色以及紫色)不能分辨。
-常把(绿色视为黄色)，(紫色看成蓝色)，将((绿色和蓝色相混)为白色)。
+- 颜色空间：sRGB → 线性 RGB → OKLab / OKLCH（感知均匀、计算便宜）。精细名称用 CIEDE2000 找最近的命名颜色，色差大于 12 时名字前加“≈”。
+- 基础 12 色在 OKLCH 上按色相、明度、彩度划分，阈值相对每个色相的 sRGB 色域顶点计算（棕色 = 暗的橙/黄，粉色 = 亮的红/玫红）。
+- 色块分割在 Web Worker 里运行，不卡界面：
+  1. 降采样到约 8 万像素，5×5 均值滤波；
+  2. 用抗阴影色度 (a/L, b/L)：阴影相当于把线性 RGB 乘一个系数，这个比值不变；
+  3. 色差分解为色相方向（严）和饱和度方向（松），再加对数亮度比；
+  4. 按准星周围纹理的鲁棒离散度自动放宽容差，再乘上“范围”系数 k = 0.15 + 1.85·p²；
+  5. 滞后生长：很像的核心像素自由扩散，边缘像素最多延伸 4 个像素，避免通过细缝漏进邻居；
+  6. 开运算、保留连通域、闭运算和小孔填充，Marching Squares 提取亚像素轮廓；
+  7. 色块代表色：去掉最暗 15% 和最亮 10%，取色度中位数和 60 分位亮度。
 
-3.绿二色盲
-又称第二色盲，是由于M锥细胞的缺失造成的。患者不能分辨(淡绿色与深红色)、(紫色与青蓝色)、(紫红色与灰色)，把(绿色视为灰色或暗黑色)。
-临床上把红二色盲与绿二色盲统称为红绿色盲，患者较常见,平常说的色育一般就是指红绿色盲。
+</details>
 
-4.蓝二色盲
-又称第三色盲，是由于S锥细胞的缺失造成的。患者(蓝黄色混淆不清），对红、绿色可辨，较少见。
+<details>
+<summary><b>白平衡</b></summary>
 
-5.全色反
-又称三原色盲，也是所有色盲病中较严重的一种视觉障碍。现实世界在其眼睛中如同一幅底片，患者将(红色视为绿色)，(黑色视为白色Z)，所有看到的颜色与现实完全相反。
+先用最亮 15% 的像素做灰度世界估计，再两轮挑出接近中性灰的像素估计光源；正在测的物体不参与估计。按灰像素比例决定校正强度，限幅并做时间平滑。白纸校准直接用参考白计算各通道增益，安卓上还会锁定相机自身的白平衡。
 
-5.色弱
-色弱又叫三色觉异常，是色盲中最轻的一种，患者一般感知不到自己有色觉问题，只有通过专业的色觉测试才能发现。
-三色觉异常是三种锥细胞的一种变异造成的，其中L锥细胞的变异对应红色弱，M锥细胞的变异对应绿色弱，S锥细胞的变异对应蓝色弱。
-色弱表现为对部分颜色区分力的降低，红色弱和绿色弱对颜色的区分能力相近，都是对红、绿颜色的区分能力下降，而蓝色弱是对蓝、绿颜色的区分能力下降。
+</details>
 
-色盲矫正镜的原理：是根据补色拓扑学原理，在镜片土进行特殊镀膜，产生截止波长的作用。
-对长波长者可透射，对短波长者发生反射。色盲患者戴上色盲眼镜，可在一定程度上使原来辨认不清的图案变为能正确辨认，达到矫正色觉障碍的效果。
-实际上，这种方式只是对色彩进行简单的滤除，并不能达到很好矫正的目的。
+<details>
+<summary><b>矫正方法</b></summary>
 
+色弱模拟采用 Machado 等（2009）的生理模型，作用于线性 RGB，程度 0–100% 插值。
 
-#include <opencv2\opencv.hpp>
-#include <iostream>
+| 方法 | 适合 | 做法 |
+| --- | --- | --- |
+| 自动（默认） | 大多数人 | 程度 < 90% 用平衡，≥ 90% 用强力；蓝色弱始终用平衡 |
+| 平衡 | 色弱 | 先在屏幕色域内做逆向补偿（Ro & Yang 2004），再用模型算出补偿后仍看不到的红绿差异 e，编码到蓝黄轴和明度上（b −= 1.5·e，L += 0.35·e） |
+| 自然 | 轻度色弱 | 只做逆向补偿和保持色相的色域映射，颜色最接近原样 |
+| 强力 | 色盲、看检查图 | 在 OKLab 中把整条红绿轴叠加到蓝黄轴和明度上；强度超过 100% 时明度项按 (强度 − 1)² 加大，压过检查图故意加的亮度噪声 |
+| 模拟色弱 | 正常色觉的人 | 显示色弱者眼中的画面，用来理解或验证效果 |
 
-using namespace std;
-using namespace cv;
+GPU 着色器与 CPU 参考实现逐像素对比，误差为 0。
 
-Mat RGB2LAlphBeta(Mat3b &src)
-{
-    Mat3f L_AlphBeta(src.rows, src.cols);
-    //cvtColor(src,dest,CV_BGR2XYZ);
-    float X, Y, Z, L, M, S, _L, Alph, Beta;
-    int R, G, B;
-    for (int i = 0; i < src.rows; i++)
-    {
-        for (int j = 0; j < src.cols; j++)
-        {
-            B = src(i, j)[0];
-            G = src(i, j)[1];
-            R = src(i, j)[2];
-            
-            X = (0.4124 * R) + (0.3576 * G) + (0.1805 * B);
-            Y = (0.2126 * R) + (0.7152 * G) + (0.0722 * B);
-            Z = (0.0193 * R) + (0.1192 * G) + (0.9505 * B);
-            L = (0.3897 * X) + (0.6890 * Y) + (-0.0787 * Z);
-            M = (-0.2298 * X) + (1.1834* Y) + (0.0464 * Z);
-            S = (0.0000 * X) + (0.0000 * Y) + (1.0000 * Z);
+</details>
 
-            //for handling log
-            if (L == 0.0000) L = 1.0000;
-            if (M == 0.0000) M = 1.0000;
-            if (S == 0.0000) S = 1.0000;
+<details>
+<summary><b>调校</b></summary>
 
+- **第一步：测量。** 类似 Cambridge Colour Test 的点阵 Landolt C，亮度随机抖动，排除亮度线索。三个刺激方向分别是红 / 绿 / 蓝色盲最难看出的颜色方向（Machado 矩阵的最小奇异向量），用 2-down/1-up 阶梯法求阈值，再联合拟合类型、程度和个人灵敏度，所以不依赖屏幕校色。
+- **第二步：检验。** 模型只是近似，所以直接在你的眼睛上验证：在你阈值的 60% 处出图（未矫正时看不清），4 张矫正、3 张不矫正随机混排；矫正后 4 张看清 3 张算通过，否则依次加强到“平衡 130%”“强力 100%”“强力 200%”。
+- 模拟测试中，绿色弱 50–90%、红色弱 70–100%、蓝色弱 80–100% 的观察者在 78–100% 的测试里都得到了通过验证的设置。
 
-            //LMS to Lab
-            _L = (1.0 / sqrt(3.0)) *((1.0000 * log10(L)) + (1.0000 * log10(M)) + (1.0000 * log10(S)));
-            Alph = (1.0 / sqrt(6.0)) * ((1.0000 * log10(L)) + (1.0000 * log10(M)) + (-2.0000 * log10(S)));
-            Beta = (1.0 / sqrt(2.0)) * ((1.0000 * log10(L)) + (-1.0000 * log10(M)) + (-0.0000 * log10(S)));
+</details>
 
-            L_AlphBeta(i, j)[0] = _L;
-            L_AlphBeta(i, j)[1] = Alph;
-            L_AlphBeta(i, j)[2] = Beta;
-        }
-    }
+## 本地开发
 
-    return L_AlphBeta;
-}
+不需要构建，纯 ES Modules。
 
-Mat LAlphBeta2RGB(Mat3f &src)
-{
-    Mat3f XYZ(src.rows, src.cols);
-    Mat3b BGR(src.rows, src.cols);
+```bash
+npm start            # http://localhost:8765（localhost 允许打开摄像头）
+npm test             # 单元测试，Node 18+
+npm run test:e2e     # 端到端测试：合成摄像头视频 + Playwright Chromium
+                     # 需要 numpy、Pillow、ffmpeg、playwright
+```
 
-    float X, Y, Z, L, M, S, _L, Alph, Beta;
-    for (int i = 0; i < src.rows; i++)
-    {
-        for (int j = 0; j < src.cols; j++)
-        {
-            _L = src(i, j)[0] * 1.7321;
-            Alph = src(i, j)[1] * 2.4495;
-            Beta = src(i, j)[2] * 1.4142;
+用一张真实照片当虚拟摄像头：
 
-            /*Inv_Transform_logLMS2lab =
+```bash
+python3 tests/make_photo_scene.py 照片.png /tmp/real.y4m
+python3 tests/e2e_real.py /tmp/real.y4m /tmp/shots
+```
 
-            0.33333   0.16667   0.50000
-            0.33333   0.16667  -0.50000
-            0.33333  -0.33333   0.00000*/
-            L = (0.33333*_L) + (0.16667 * Alph) + (0.50000 * Beta);
-            M = (0.33333 * _L) + (0.16667 * Alph) + (-0.50000 * Beta);
-            S = (0.33333 * _L) + (-0.33333 * Alph) + (0.00000* Beta);
+26 项单元测试覆盖：CIEDE2000 参考数据、颜色命名、Machado 矩阵、补偿与平衡的区分度、强阴影 / 纹理 / 细缝漏边、自动白平衡、镜头名称识别、调校拟合与两步流程、Ishihara 式点阵图。
 
-            L = pow(10, L);
-            if (L == 1) L = 0;
-            M = pow(10, M);
-            if (M == 1) M = 0;
-            S = pow(10, S);
-            if (S == 1) S = 0;
-            /*Inv_Transform_XYZ2LMS
+<details>
+<summary><b>项目结构</b></summary>
 
-            1.91024  -1.11218   0.20194
-            0.37094   0.62905   0.00001
-            0.00000   0.00000   1.00000*/
+```
+docs/                       网站根目录（GitHub Pages 从这里发布）
+├── index.html              页面与图标
+├── manifest.webmanifest    PWA 清单
+├── sw.js                   离线缓存
+├── css/style.css
+├── icons/
+└── js/
+    ├── main.js             界面与主循环
+    ├── gl.js               WebGL 渲染与矫正着色器
+    ├── cvd.js              模拟 / 补偿 / 平衡 / 强力
+    ├── machado.js          Machado 2009 矩阵
+    ├── color.js            颜色空间与 CIEDE2000
+    ├── naming.js           基础 / 精细颜色命名
+    ├── segment.js          色块分割与轮廓
+    ├── wb.js               自动白平衡
+    ├── analysis-worker.js  后台分析线程
+    ├── camera.js           镜头 / 变焦 / 补光 / 白平衡锁定
+    ├── selftest.js         色觉调校
+    └── i18n.js             中英文文案
+tests/                      单元测试与端到端测试
+assets/                     README 用图
+```
 
-            X = (1.91024 *L) + (-1.11218 * M) + (0.20194 * S);
-            Y = (0.37094 * L) + (0.62905 * M) + (0.00001 * S);
-            Z = (0.00000 * L) + (0.00000 * M) + (1.00000 * S);
-            /*Inv_Transform_RGB2XYZ
-            3.240625  -1.537208  -0.498629
-            -0.968931   1.875756   0.041518
-            0.055710  -0.204021   1.056996*/
+</details>
 
-            BGR(i, j)[2] = saturate_cast<uchar>((3.240625 * X) + (-1.537208 * Y) + (-0.498629 * Z));
-            BGR(i, j)[1] = saturate_cast<uchar>((-0.968931 * X) + (1.875756 * Y) + (0.041518 * Z));
-            BGR(i, j)[0] = saturate_cast<uchar>((0.055710 * X) + (-0.204021 * Y) + (1.056996 * Z));
-        }
-    }
-    //normalize(BGR,BGR, 255, 0, NORM_MINMAX, CV_8UC3 );
-    return BGR;
-}
+<details>
+<summary><b>部署到 GitHub Pages</b></summary>
 
+1. 推送到 GitHub。
+2. 仓库 **Settings → Pages** → Build and deployment 选 **Deploy from a branch**，Branch 选 `main`，文件夹选 **`/docs`**。
+3. 约 1 分钟后访问 `https://<用户名>.github.io/AnomalousTrichromatismHelper/`。用户主页仓库绑定了自定义域名时，项目页会自动挂在该域名下，项目仓库里不用再填 Custom domain。
 
-int main()
-{
-    Mat3b img = imread("path_to_image");
+私有仓库使用 Pages 需要 GitHub Pro / Team / Enterprise；Pages 网站本身仍是公开的。摄像头只能在 HTTPS 页面里打开。
 
-    Mat3f labb = RGB2LAlphBeta(img);
+</details>
 
-    Mat3b rgb = LAlphBeta2RGB(labb);
+## 局限
 
-    Mat3b diff;
-    absdiff(img, rgb, diff);
+- 本应用只是辅助工具，不能替代医院的色觉检查（如 Ishihara、FM-100、色觉镜）。上面的效果数据来自色弱模型模拟，真人效果因人而异，请以“调校”的结果为准。
+- 手机摄像头的曝光和白平衡会改变颜色。画面里没有白色或灰色物体时自动白平衡可能不准，这时用白纸校准；iPhone 的 Safari 不允许网页锁定相机白平衡。
+- “平衡”和“强力”会改变部分颜色的明暗和偏黄 / 偏蓝程度，目的是让你分得开，不是还原颜色本来的样子。
+- 安卓的镜头名称通常只是编号，App 只能显示为“后置摄像头 1 / 2 ……”。
 
-    // Check if all pixels are equals
-    cout << ((sum(diff) == Scalar(0, 0, 0, 0)) ? "Equals" : "Different");
+## 参考文献
 
-    return 0;
-}
+**App 直接用到的方法**
 
-https://blog.51cto.com/u_15353042/3751269
+- G. M. Machado, M. M. Oliveira, L. A. F. Fernandes. A physiologically-based model for simulation of color vision deficiency. *IEEE TVCG* 15(6), 2009.
+- Y. M. Ro, S. Yang. Color adaptation for anomalous trichromats. *Int. J. Imaging Systems and Technology* 14, 16–20, 2004.
+- B. C. Regan, J. P. Reffin, J. D. Mollon. Luminance noise and the rapid determination of discrimination ellipses in colour deficiency. *Vision Research* 34(10), 1994.（Cambridge Colour Test）
+- B. Ottosson. A perceptual color space for image processing (OKLab), 2020.
+- G. Sharma, W. Wu, E. N. Dalal. The CIEDE2000 color-difference formula: implementation notes, supplementary test data, and mathematical observations. *Color Research & Application* 30(1), 2005.
+- 何志良, 詹佩真, 李嘉樱, 蔡家荣, 曾晓铭, 张昕. 基于图像分割的局部色盲矫正方法. *计算机系统应用* 26(3), 2017.
 
-https://chaphlagical.icu/DIP/index/report1.pdf
+**背景阅读**
 
-https://arxiv.org/pdf/1711.10662.pdf
+- H. Brettel, F. Viénot, J. D. Mollon. Computerized simulation of color appearance for dichromats. *JOSA A* 14(10), 2647–2655, 1997.
+- K. Rasche, R. Geist, J. Westall. Re-coloring images for gamuts of lower dimension. *Computer Graphics Forum* 24(3), 2005.
+- K. Rasche, R. Geist, J. Westall. Detail preserving reproduction of color images for monochromats and dichromats. *IEEE Computer Graphics and Applications* 25(3), 2005.
+- A. A. Gooch, S. C. Olsen, J. Tumblin, B. Gooch. Color2Gray: salience-preserving color removal. *ACM Transactions on Graphics* 24(3), 2005.
+- T. Wachtler, U. Dohrmann, R. Hertel. Modeling color percepts of dichromats. *Vision Research* 44, 2843–2855, 2004.
+- C. E. Martin, J. G. Keller, S. K. Rogers, M. Kabrisky. Color blindness and a color human visual system model. *IEEE Trans. SMC — Part A* 30(4), 2000.
+- S. Nakauchi, S. Usui. Multilayered neural network models for color blindness. *IJCNN*, 1991.
+- J. Lee, W. P. dos Santos. An adaptive fuzzy-based system to simulate, quantify and compensate color blindness. arXiv:1711.10662, 2017.
+- 孙养龙《基于 Android 的色盲矫正系统设计与实现》；刘雨君《基于图像处理的色盲辅助矫正方法研究》；鲍吉斌《基于图像颜色变换的色盲矫正方法研究》；王恩《色盲图像处理系统设计和算法研究》；吴丽思《色盲图像矫正算法研究及测试系统设计》（学位论文）。
 
-https://blog.css8.cn/post/18674723.html
+---
 
-https://wikichi.icu/wiki/LMS_color_space
-https://wikichi.icu/wiki/chromatic_adaptation
-
-https://yylifen.github.io/color-from-hexcodes-to-eyeballs/color/chapter/ch11.html
+<div align="center"><sub>由 <a href="https://ruilin.li">RoryLi98</a> 制作</sub></div>

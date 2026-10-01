@@ -58,6 +58,14 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--focus); out
   border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.75), inset 0 0 0 1px rgba(0, 0, 0, 0.75);
 }
 .mode-correct #reticle, .mode-correct #btnRecenter { display: none !important; }
+#reticle .tip { display: none; position: absolute; left: 50%; bottom: 46px; transform: translateX(-50%); white-space: nowrap;
+  padding: 4px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 700; background: rgba(0, 0, 0, 0.7); border: 1px solid var(--line); }
+
+/* white-balance view: no colour ID, just the target for the white card */
+.wb-open #card, .wb-open .range-ctl, .wb-open #correctPanel, .wb-open #btnRecenter, .wb-open #splitLabels { display: none !important; }
+.wb-open #reticle { display: block !important; }
+.wb-open.wb-manual #reticle .ring { width: 34px; height: 34px; margin: -17px 0 0 -17px; border-width: 2.5px; }
+.wb-open.wb-manual #reticle .tip { display: block; }
 
 #splitLabels { position: absolute; z-index: 3; top: calc(var(--safe-t) + 64px); left: 0; right: 0; pointer-events: none; }
 #splitLabels span {
@@ -106,8 +114,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--focus); out
 #hud { position: absolute; z-index: 6; left: 50%; transform: translateX(-50%); top: calc(var(--safe-t) + 66px); padding: 6px 12px; border-radius: 999px; background: rgba(0,0,0,.7); border: 1px solid var(--line); font-weight: 700; font-size: 14px; pointer-events: none; white-space: nowrap; }
 
 /* zoom chips (like the native camera app) */
-.zoom-chips { position: absolute; z-index: 4; transform: translateX(-50%); display: flex; gap: 6px; padding: 4px; border-radius: 999px; background: rgba(0, 0, 0, 0.45); }
-.zoom-chips button { min-width: 40px; height: 34px; padding: 0 8px; border-radius: 999px; font-size: 13px; font-weight: 800; color: var(--text); background: rgba(255, 255, 255, 0.12); }
+.zoom-chips { position: absolute; z-index: 4; transform: translateY(-50%); display: flex; flex-direction: column; gap: 4px; padding: 4px; border-radius: 999px; background: rgba(0, 0, 0, 0.42); border: 1px solid var(--line); }
+.zoom-chips button { width: 36px; height: 36px; padding: 0; border-radius: 50%; font-size: 12px; font-weight: 800; color: var(--text); background: rgba(255, 255, 255, 0.1); }
 .zoom-chips button.on { background: var(--sel-bg); color: var(--sel-text); }
 
 /* region range slider at the right edge of the picture */

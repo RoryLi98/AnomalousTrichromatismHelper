@@ -1,3 +1,16 @@
-node_modules/
+# local reference papers (kept on disk, not published)
+论文资料/
+
+# local outputs and test media
+Claude outputs/
 *.y4m
+*.log
+
+# tooling
+node_modules/
 __pycache__/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
