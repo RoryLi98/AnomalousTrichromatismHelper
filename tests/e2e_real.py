@@ -83,13 +83,13 @@ with sync_playwright() as p:
     vx, vy = frame_to_view(page, *POINTS['cup'][:2])
     page.evaluate(f"window.__cvh.setReticle({vx}, {vy})")
     areas = {}
-    for s in (0.5, 1.0, 2.0):
+    for s in (0.3, 0.6, 1.2):
         page.evaluate(f"window.__cvh.setSens({s})")
         settle(page, 3)
         areas[s] = page.evaluate("() => window.__cvh.R.lastRes.area")
     results['range_areas'] = areas
     page.screenshot(path=f'{OUT}/r_range.png')
-    page.evaluate("window.__cvh.setSens(1)")
+    page.evaluate("window.__cvh.setSens(0.6)")
 
     # lens sheet + framing
     page.click('#btnLens'); page.wait_for_timeout(600)
@@ -108,9 +108,16 @@ with sync_playwright() as p:
         results['zoom'] = page.evaluate("() => window.__cvh.R.zoom")
         page.screenshot(path=f'{OUT}/r_zoom2.png')
         page.click('#zoomChips button[data-z="1"]')
-    # correct mode still works with the new layout
+    # correct mode: no colour identification at all
     page.click('#modeCorrect'); page.wait_for_timeout(800)
     page.screenshot(path=f'{OUT}/r_correct.png')
+    page.touchscreen.tap(195, 330); page.wait_for_timeout(600)   # collapses the panel
+    page.touchscreen.tap(120, 300); page.wait_for_timeout(600)   # must not move a reticle
+    results['correct'] = page.evaluate("""() => ({ card: getComputedStyle(document.getElementById('card')).display,
+        reticle: getComputedStyle(document.getElementById('reticle')).display,
+        range: getComputedStyle(document.getElementById('rangeCtl')).display,
+        reticlePos: window.__cvh.R.reticle, region: window.__cvh.R.lastRes, rect: window.__cvh.R.rect })""")
+    page.screenshot(path=f'{OUT}/r_correct_collapsed.png')
     browser.close()
 
 print(json.dumps(results, ensure_ascii=False, indent=1))

@@ -122,16 +122,23 @@ with sync_playwright() as p:
     page.wait_for_timeout(300)
     page.screenshot(path=f'{OUT}/10_selftest.png')
     # answer randomly until done
-    for i in range(40):
+    for i in range(90):
         if page.is_visible('#testResult'):
             break
         page.click('.dir-pad button[data-dir="-1"]')
     page.wait_for_timeout(300)
     page.screenshot(path=f'{OUT}/11_selftest_result.png')
-    results['selftest'] = page.inner_text('#testResultText')
+    results['selftest'] = page.inner_text('#testResultText') + ' | ' + page.inner_text('#testVerify')
+    page.click('#btnTestApply')
+    page.wait_for_timeout(500)
+    results['applied'] = page.evaluate("() => window.__cvh.S.cvd")
+    page.screenshot(path=f'{OUT}/11b_applied.png')
+    page.click('#methodChips button[data-method=balanced]')
+    page.wait_for_timeout(500)
+    page.screenshot(path=f'{OUT}/11c_balanced.png')
 
     # freeze & photo flows
-    page.click('#btnTestClose')
+    if page.is_visible('#btnTestClose'): page.click('#btnTestClose')
     page.click('#modeIdentify')
     page.click('#btnFreeze')
     page.wait_for_timeout(500)

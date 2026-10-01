@@ -20,11 +20,11 @@ const DEFAULTS = {
   lang: detectLang(), set: 'basic', bilingual: false, outline: true, dim: false,
   values: true, autoSpeak: false, mode: 'identify',
   wbMode: 'auto', wb: [1, 1, 1], wbLocked: false, wbCalibrated: false, // white balance: auto | manual | off
-  segSens: 1,                                      // region range multiplier
+  segPos: 0.5,                                     // region range slider position (0..1, non-linear)
   frame: 'fit',                                    // fit = whole camera frame, fill = crop to screen
   camId: null, camFacing: 'environment', autoMainDone: false, tipsShown: false,
-  cvd: { type: 'deutan', severity: 60, method: 'auto', strength: 100 },
-  split: false, preview: false, showId: true, cpCollapsed: false,
+  cvd: { type: 'deutan', severity: 60, method: 'auto', strength: 100, tuned: false },
+  split: false, preview: false, cpCollapsed: false,
 };
 function loadSettings() {
   let saved = null;
@@ -33,6 +33,7 @@ function loadSettings() {
   if (saved && typeof saved === 'object') {
     for (const k of Object.keys(s)) if (k in saved) s[k] = k === 'cvd' ? { ...s.cvd, ...saved.cvd } : saved[k];
     if (saved.wbOn && !('wbMode' in saved)) s.wbMode = 'manual'; // v1.0 setting
+    if (s.cvd.method === 'daltonize') s.cvd.method = 'auto';      // v1.2: Daltonize was replaced by Balanced
   }
   return s;
 }
@@ -122,7 +123,7 @@ function layout() {
     // a fixed reserve above the toolbar for the colour card, so the picture does not jump
     // whenever the card text changes height
     const toolbarTop = document.querySelector('.toolbar').getBoundingClientRect().top;
-    const reserve = !idVisible() ? 8 : S.mode === 'identify' ? CARD_RESERVE : CARD_RESERVE_COMPACT;
+    const reserve = S.mode === 'identify' ? CARD_RESERVE : PANEL_RESERVE;
     const bottom = toolbarTop - reserve;
     let ay = top, ah = bottom - top;
     if (ah < H * 0.35) { ay = 0; ah = H; } // not enough room: use the whole screen
@@ -150,7 +151,7 @@ function layout() {
   if (changed) { R.newFrame = true; requestAnalysis(); }
 }
 
-const CARD_RESERVE = 172, CARD_RESERVE_COMPACT = 120;
+const CARD_RESERVE = 172, PANEL_RESERVE = 70; // identify: colour card; correct: collapsed panel
 
 /** Cover-crop of the source matching the picture rect (and digital zoom), in source pixels. */
 function crop() {
@@ -276,7 +277,8 @@ function readAnalysisFrame(c) {
   return aCtx.getImageData(0, 0, AW, AH);
 }
 
-function idVisible() { return !(S.mode === 'correct' && !S.showId); }
+/** Colour identification (reticle, card, region) only runs in Identify mode. */
+function idVisible() { return S.mode === 'identify'; }
 
 // ---------------- analysis (patch on the main thread, region + auto WB in a worker) ----------------
 function initWorker() {
@@ -293,8 +295,8 @@ function initWorker() {
 function analyze() {
   const c = crop();
   if (!c) return;
-  R.patch = samplePatch(c);
   const wantRegion = idVisible();
+  if (wantRegion) R.patch = samplePatch(c);
   const wantWB = S.wbMode === 'auto';
   if ((wantRegion || wantWB) && !(R.busy && performance.now() - R.busySince < 1500)) {
     const img = readAnalysisFrame(c);
@@ -303,7 +305,7 @@ function analyze() {
       id: ++R.reqId, buf, w: img.width, h: img.height,
       segment: wantRegion, wb: wantWB,
       sx: R.reticle.x * img.width - 0.5, sy: R.reticle.y * img.height - 0.5,
-      sens: S.segSens, gains: wbGains(), temporal: R.kind === 'camera', wantAlpha: S.dim,
+      sens: posToSens(S.segPos), gains: wbGains(), temporal: R.kind === 'camera', wantAlpha: S.dim,
     };
     R.reqMeta = { id: msg.id, retVer: R.retVer, w: img.width, h: img.height };
     if (R.worker) {
@@ -313,7 +315,7 @@ function analyze() {
       onRegionResult(runLocal(msg));
     }
   }
-  if (!wantRegion) { R.lastRes = null; drawOverlay(); }
+  if (!wantRegion) { R.lastRes = null; drawOverlay(); return; }
   updateNaming();
 }
 
@@ -346,7 +348,7 @@ function onRegionResult(out) {
   if (out.res) R.lastRes = out.res;
   R.resCount = (R.resCount || 0) + 1;
   drawOverlay();
-  updateNaming();
+  if (idVisible()) updateNaming();
 }
 
 function pickColor() {
@@ -707,18 +709,21 @@ function showHud(text) {
 }
 
 // ---------------- region range control ----------------
-const SENS_MIN = 0.4, SENS_MAX = 2.5;
-function sensToPos(s) { return (Math.log(s) - Math.log(SENS_MIN)) / (Math.log(SENS_MAX) - Math.log(SENS_MIN)); }
-function posToSens(p) { return Math.exp(Math.log(SENS_MIN) + Math.max(0, Math.min(1, p)) * (Math.log(SENS_MAX) - Math.log(SENS_MIN))); }
-function setSens(v, hud = true) {
-  S.segSens = Math.max(SENS_MIN, Math.min(SENS_MAX, v));
+// The slider is deliberately non-linear: tolerance = 0.15 + 1.85·p², so the lower half of the
+// track (fine separation of similar colours) covers 0.15–0.61 and the default (middle) is ≈0.6.
+const SENS_MIN = 0.15, SENS_SPAN = 1.85;
+function posToSens(p) { p = Math.max(0, Math.min(1, p)); return SENS_MIN + SENS_SPAN * p * p; }
+function sensToPos(v) { return Math.sqrt(Math.max(0, Math.min(1, (v - SENS_MIN) / SENS_SPAN))); }
+function setRangePos(p, hud = true) {
+  S.segPos = Math.max(0, Math.min(1, p));
   save();
-  const p = sensToPos(S.segSens);
-  $('rangeKnob').style.bottom = `calc(${(p * 100).toFixed(1)}% - 11px)`;
-  $('rangeFill').style.height = `${(p * 100).toFixed(1)}%`;
-  if (hud) showHud(t('range.hud', { p: Math.round(S.segSens * 100) }));
+  $('rangeKnob').style.bottom = `calc(${(S.segPos * 100).toFixed(1)}% - 11px)`;
+  $('rangeFill').style.height = `${(S.segPos * 100).toFixed(1)}%`;
+  if (hud) showHud(t('range.hud', { p: Math.round(S.segPos * 100) }));
   requestAnalysis();
 }
+/** For tests: set the tolerance multiplier directly. */
+function setSens(v) { setRangePos(sensToPos(v), false); }
 
 /** Position the reticle, range slider and zoom chips relative to the picture. */
 function placeFloating() {
@@ -728,7 +733,9 @@ function placeFloating() {
   rng.style.top = `${rc.y + rc.h / 2}px`;
   rng.style.right = `${Math.max(6, R.W - (rc.x + rc.w) + 6)}px`;
   const chips = $('zoomChips');
-  const cardTop = $('card').offsetParent ? $('card').getBoundingClientRect().top : R.H - 80;
+  // top of the bottom stack (colour card, white-balance popover or correction panel)
+  const stack = [...document.querySelectorAll('.bottom > *')].filter((el) => el.offsetParent);
+  const cardTop = stack.length ? stack[0].getBoundingClientRect().top : R.H - 80;
   const below = rc.y + rc.h + 4;
   // below the picture when there is room (fit mode), otherwise inside its bottom edge
   chips.style.top = `${below + 42 <= cardTop ? below : Math.min(rc.y + rc.h, cardTop) - 46}px`;
@@ -764,7 +771,6 @@ function setMode(mode) {
   app.classList.toggle('mode-identify', mode === 'identify');
   $('modeIdentify').setAttribute('aria-selected', String(mode === 'identify'));
   $('modeCorrect').setAttribute('aria-selected', String(mode === 'correct'));
-  app.classList.toggle('hide-id', !S.showId);
   applyCorrection();
   requestAnimationFrame(() => { layout(); updateZoomChips(); });
   requestAnalysis();
@@ -783,16 +789,21 @@ function syncCorrectUI() {
   document.querySelectorAll('#methodChips button').forEach((b) => b.classList.toggle('on', b.dataset.method === c.method));
   $('severity').value = c.severity;
   $('sevOut').textContent = `${c.severity}% · ${t(sevLabelKey(c.severity))}`;
-  $('strength').value = c.strength;
-  $('strOut').textContent = `${c.strength}%`;
   const resolved = resolveMethod(c.method, c.severity / 100, c.type);
+  // pure compensation is a blend (max 100 %); the re-encoding methods can be pushed further,
+  // Strong up to 200 % (for reading colour-plate figures)
+  const strMax = resolved === 'compensate' ? 100 : resolved === 'enhance' ? 200 : 150;
+  $('strength').max = strMax;
+  $('strength').value = Math.min(c.strength, strMax);
+  $('strOut').textContent = `${Math.min(c.strength, strMax)}%`;
   $('methodDesc').textContent = c.method === 'auto'
     ? t('m.desc.auto', { m: t('m.' + resolved) }) : t('m.desc.' + c.method);
-  $('optSplit').checked = S.split; $('optPreview').checked = S.preview; $('optShowId').checked = S.showId;
+  $('optSplit').checked = S.split; $('optPreview').checked = S.preview;
   $('cpSummary').textContent = `${t('cvd.' + c.type)} · ${c.severity}% · ${t('m.' + resolved)}`;
   $('correctPanel').classList.toggle('collapsed', S.cpCollapsed);
   $('cpToggle').setAttribute('aria-expanded', String(!S.cpCollapsed));
   $('strength').disabled = resolved === 'simulate';
+  $('btnTest').classList.toggle('attn', !c.tuned);
 }
 
 function syncSettingsUI() {
@@ -930,10 +941,10 @@ function bind() {
 
   // zoom chips & range control
   $('zoomChips').addEventListener('click', (e) => { const z = e.target.dataset && e.target.dataset.z; if (z) setZoom(+z); });
-  $('rangePlus').addEventListener('click', () => setSens(S.segSens * 1.2));
-  $('rangeMinus').addEventListener('click', () => setSens(S.segSens / 1.2));
+  $('rangePlus').addEventListener('click', () => setRangePos(S.segPos + 0.06));
+  $('rangeMinus').addEventListener('click', () => setRangePos(S.segPos - 0.06));
   const track = $('rangeTrack');
-  const fromY = (e) => { const r = track.getBoundingClientRect(); setSens(posToSens(1 - (e.clientY - r.top) / r.height)); };
+  const fromY = (e) => { const r = track.getBoundingClientRect(); setRangePos(1 - (e.clientY - r.top) / r.height); };
   track.addEventListener('pointerdown', (e) => { track.setPointerCapture(e.pointerId); track.dataset.drag = '1'; fromY(e); });
   track.addEventListener('pointermove', (e) => { if (track.dataset.drag) fromY(e); });
   const stop = () => { delete track.dataset.drag; };
@@ -961,13 +972,12 @@ function bind() {
   $('strength').addEventListener('input', (e) => { S.cvd.strength = +e.target.value; save(); syncCorrectUI(); applyCorrection(); });
   bindToggle('optSplit', 'split', applyCorrection);
   bindToggle('optPreview', 'preview', applyCorrection);
-  bindToggle('optShowId', 'showId', () => { app.classList.toggle('hide-id', !S.showId); placeFloating(); requestAnalysis(); requestAnimationFrame(layout); });
 
   // self-test
   const test = new SelfTest({
     root: $('test'), canvas: $('testCanvas'), t,
-    onApply: (type, severity) => {
-      S.cvd.type = type; S.cvd.severity = severity; S.cvd.method = 'auto'; save();
+    onApply: ({ type, severity, method, strength }) => {
+      S.cvd = { ...S.cvd, type, severity, method, strength, tuned: true }; save();
       syncCorrectUI(); applyCorrection(); $('test').hidden = true;
       if (S.mode !== 'correct') setMode('correct');
     },
@@ -1002,7 +1012,7 @@ function bindGestures() {
       const splitOn = S.mode === 'correct' && S.split;
       dragSplit = splitOn && Math.abs(e.clientX - (R.rect.x + R.split * R.rect.w)) < 32;
       tap = { x: e.clientX, y: e.clientY, t: performance.now() };
-      swipe = { x: e.clientX, y: e.clientY, sens: S.segSens, on: false };
+      swipe = { x: e.clientX, y: e.clientY, pos: S.segPos, on: false };
     } else if (pts.size === 2) {
       const [a, b] = [...pts.values()];
       pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z: currentZoom() };
@@ -1023,7 +1033,7 @@ function bindGestures() {
     } else if (swipe && pts.size === 1) {
       const dx = e.clientX - swipe.x, dy = e.clientY - swipe.y;
       if (!swipe.on && Math.abs(dy) > 18 && Math.abs(dy) > 1.5 * Math.abs(dx) && idVisible()) swipe.on = true;
-      if (swipe.on) setSens(swipe.sens * Math.pow(2, -dy / 220));
+      if (swipe.on) setRangePos(swipe.pos - dy / 420);
     }
     if (tap && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 12) tap = null;
   });
@@ -1039,6 +1049,7 @@ function bindGestures() {
           S.cpCollapsed = true; save(); syncCorrectUI(); updateZoomChips(); tap = null; return;
         }
         if (!$('wbPop').hidden && S.wbMode !== 'manual') { $('wbPop').hidden = true; updateToolbar(); }
+        if (!idVisible()) { tap = null; return; } // Correct mode: no reticle
         if (now - lastTap < 320) { setReticle(0.5, 0.5); lastTap = 0; }
         else if (inRect(tap.x, tap.y)) { setReticle((tap.x - R.rect.x) / R.rect.w, (tap.y - R.rect.y) / R.rect.h); lastTap = now; }
       }
@@ -1063,7 +1074,7 @@ async function boot() {
   syncCorrectUI();
   syncSettingsUI();
   syncWBUI();
-  setSens(S.segSens, false);
+  setRangePos(S.segPos, false);
   setMode(S.mode);
   updateToolbar();
   watchVideoFrames();

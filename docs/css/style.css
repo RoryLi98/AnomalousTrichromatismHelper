@@ -57,7 +57,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--focus); out
   position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px;
   border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.75), inset 0 0 0 1px rgba(0, 0, 0, 0.75);
 }
-.mode-correct.hide-id #reticle { display: none; }
+.mode-correct #reticle, .mode-correct #btnRecenter { display: none !important; }
 
 #splitLabels { position: absolute; z-index: 3; top: calc(var(--safe-t) + 64px); left: 0; right: 0; pointer-events: none; }
 #splitLabels span {
@@ -119,7 +119,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--focus); out
 .rc-fill { position: absolute; left: 50%; bottom: 0; width: 4px; margin-left: -2px; border-radius: 2px; background: #fff; }
 .rc-knob { position: absolute; left: 50%; width: 22px; height: 22px; margin-left: -11px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px var(--bg), 0 1px 4px rgba(0, 0, 0, 0.6); }
 .rc-label { font-size: 11px; font-weight: 700; color: var(--text); writing-mode: horizontal-tb; }
-.mode-correct.hide-id .range-ctl { display: none; }
+.mode-correct .range-ctl { display: none !important; }
 
 /* white-balance popover */
 .pop { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 8px; }
@@ -183,11 +183,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--focus); out
 /* correction panel (only in correct mode) */
 #correctPanel { display: none; overflow: hidden; }
 .mode-correct #correctPanel { display: block; }
-.mode-correct.hide-id #card { display: none; }
-.mode-correct #card { padding: 8px 10px; }
-.mode-correct #card #swatch { width: 40px; height: 40px; border-radius: 10px; }
-.mode-correct #card .name { font-size: 20px; }
-.mode-correct #card .card-foot { display: none; }
+.mode-correct #card { display: none; }
 .cp-head { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 4px; }
 .cp-sum { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 8px 8px 8px 10px; font-weight: 700; text-align: left; }
 #cpSummary { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -290,3 +286,8 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
   .toolbar > button { min-height: 48px; padding: 6px 4px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* tuner verification summary */
+.verify-note { white-space: pre-line; text-align: left; background: rgba(255, 255, 255, 0.06); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: 14px; line-height: 1.55; margin: 8px 0; }
+.verify-note.bad { border-color: rgba(255, 183, 77, 0.7); }
+#btnTest.attn { border-color: var(--focus); color: var(--focus); }

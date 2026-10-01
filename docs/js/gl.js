@@ -23,7 +23,7 @@ precision mediump float;
 #endif
 varying vec2 vUv;
 uniform sampler2D uTex;
-uniform int uMethod;        // 0 none, 1 compensate, 2 daltonize, 3 enhance, 4 simulate
+uniform int uMethod;        // 0 none, 1 compensate, 2 daltonize, 3 enhance, 4 simulate, 5 balanced
 uniform mat3 uSim;          // Machado simulation (linear RGB)
 uniform mat3 uInv;          // inverse simulation (compensation)
 uniform mat3 uErr;          // daltonize error shift
@@ -93,6 +93,25 @@ vec3 process(vec3 srgb, vec3 lin) {
     return oklabToLin(lab);
   } else if (uMethod == 4) {
     return uSim * lin;
+  } else if (uMethod == 5) {
+    // balanced: compensation within gamut, then re-encode what the viewer still misses
+    vec3 comp = uInv * lin;
+    float Y = dot(lin, vec3(0.2126, 0.7152, 0.0722));
+    vec3 d = comp - vec3(Y);
+    float t = 1.0;
+    for (int k = 0; k < 3; k++) {
+      float dk = k == 0 ? d.r : (k == 1 ? d.g : d.b);
+      if (dk > 1e-5) t = min(t, (1.0 - Y) / dk);
+      else if (dk < -1e-5) t = min(t, Y / -dk);
+    }
+    t = max(t, 0.0);
+    vec3 o1 = mix(lin, vec3(Y) + t * d, uStrength);
+    vec3 T = linToOklab(lin);
+    vec3 V = linToOklab(clamp(uSim * o1, 0.0, 1.0));
+    vec3 lab = linToOklab(clamp(o1, 0.0, 1.0));
+    if (uEnh.x < 0.5) { float e = T.y - V.y; lab.z -= uEnh.y * e; lab.x += uEnh.z * e; }
+    else { float e = T.z - V.z; lab.y -= uEnh.y * e; lab.x += uEnh.z * e; }
+    return oklabToLin(lab);
   }
   return lin;
 }

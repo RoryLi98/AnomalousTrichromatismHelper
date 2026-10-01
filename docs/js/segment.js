@@ -175,11 +175,13 @@ export class Segmenter {
     const st = this._seedStats(sx, sy, 4);
     // chromatic vs neutral seed (saturation ≈ C/L)
     const wc = Math.max(0, Math.min(1, (st.ss - 0.05) / 0.06));
-    const tex = (base, spread, cap) => Math.min(cap, Math.max(base, 2.5 * spread) * sens);
+    // chromatic tolerances scale with the range; lightness more slowly (shading keeps one object
+    // together even when the user narrows the range to separate two similar colours)
+    const tex = (base, spread, cap, k = sens) => Math.min(cap, Math.max(base, 2.5 * spread) * k);
     const tt = tex(0.05, st.mt, 0.18);    // hue shift (tangential)
     const trm = tex(0.22, st.mr, 0.4);    // desaturation (glare, deep shadow)
     const trp = tex(0.14, st.mr, 0.3);    // more saturated than the seed
-    const tl = tex(0.3 + 0.55 * wc, st.mlam, 2.0); // ln lightness ratio: 1.35× neutral … 2.3× coloured
+    const tl = tex(0.3 + 0.55 * wc, st.mlam, 2.0, Math.sqrt(sens)); // ln lightness ratio: 1.35× neutral … 2.3× coloured
     const tc = tex(0.045, st.mc, 0.3);    // plain chromaticity distance (neutral seeds)
     const itt2 = 1 / (tt * tt), itrm2 = 1 / (trm * trm), itrp2 = 1 / (trp * trp), itl2 = 1 / (tl * tl), itc2 = 1 / (tc * tc);
     const seedDark = st.L < 0.12;

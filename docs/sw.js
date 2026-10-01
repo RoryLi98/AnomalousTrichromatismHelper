@@ -1,5 +1,5 @@
 // Offline cache for the app shell. Bump VERSION when files change.
-const VERSION = 'cvh-v1.1.0';
+const VERSION = 'cvh-v1.3.0';
 const FILES = [
   './', 'index.html', 'manifest.webmanifest', 'css/style.css',
   'js/main.js', 'js/i18n.js', 'js/color.js', 'js/naming.js', 'js/cvd.js', 'js/machado.js',

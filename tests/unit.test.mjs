@@ -1,7 +1,7 @@
 // Unit tests: node --test tests/
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { rgbToLab, deltaE2000, hexToRgb, rgbToOklch } from '../docs/js/color.js';
+import { rgbToLab, deltaE2000, hexToRgb, rgbToOklch, srgbToLinear, linearToSrgb, linRgbToOklab } from '../docs/js/color.js';
 import { classifyBasic, nameColor, DETAILED, describe, basicAlternative } from '../docs/js/naming.js';
 import { machadoMatrix, mat3Inverse, mat3MulVec, shaderParams, processColor, simulateColor } from '../docs/js/cvd.js';
 
@@ -113,14 +113,36 @@ test('daltonize and enhance increase separation for dichromats', () => {
   }
 });
 
-test('auto method picks compensation for anomalous, daltonize for dichromats', () => {
-  assert.equal(shaderParams({ type: 'deutan', severity: 0.5, method: 'auto', strength: 1 }).method, 'compensate');
-  assert.equal(shaderParams({ type: 'deutan', severity: 1, method: 'auto', strength: 1 }).method, 'daltonize');
-  assert.equal(shaderParams({ type: 'tritan', severity: 1, method: 'auto', strength: 1 }).method, 'compensate');
+test('auto method picks balanced for anomalous, strong re-encoding for red–green dichromats', () => {
+  assert.equal(shaderParams({ type: 'deutan', severity: 0.5, method: 'auto', strength: 1 }).method, 'balanced');
+  assert.equal(shaderParams({ type: 'deutan', severity: 1, method: 'auto', strength: 1 }).method, 'enhance');
+  assert.equal(shaderParams({ type: 'tritan', severity: 1, method: 'auto', strength: 1 }).method, 'balanced');
+  // compensation is a blend: strengths above 100 % do not over-extrapolate it
+  assert.equal(shaderParams({ type: 'deutan', severity: 0.6, method: 'balanced', strength: 1.5 }).strength, 1);
+});
+
+test('balanced beats pure compensation, also when type/severity are set wrong', () => {
+  // red–green pairs that anomalous trichromats confuse (natural object colours)
+  const pairs = [
+    [[0.55, 0.45, 0.2], [0.42, 0.5, 0.2]],   // olive vs khaki-green
+    [[0.75, 0.35, 0.3], [0.55, 0.5, 0.3]],   // brick vs olive
+    [[0.6, 0.5, 0.45], [0.5, 0.55, 0.45]],   // pinkish gray vs greenish gray
+    [[0.85, 0.55, 0.15], [0.7, 0.65, 0.15]], // orange vs yellow-green
+  ];
+  const sep = (cfg, obsType, obsSev) => {
+    const p = shaderParams(cfg);
+    return pairs.reduce((acc, [a, b]) => acc + dE(simulateColor(processColor(a, p), obsType, obsSev), simulateColor(processColor(b, p), obsType, obsSev)), 0) / pairs.length;
+  };
+  for (const [obsType, obsSev, cfgType, cfgSev] of [['deutan', 0.8, 'deutan', 0.8], ['deutan', 0.9, 'deutan', 0.6], ['protan', 0.7, 'deutan', 0.6]]) {
+    const none = pairs.reduce((acc, [a, b]) => acc + dE(simulateColor(a, obsType, obsSev), simulateColor(b, obsType, obsSev)), 0) / pairs.length;
+    const comp = sep({ type: cfgType, severity: cfgSev, method: 'compensate', strength: 1 }, obsType, obsSev);
+    const bal = sep({ type: cfgType, severity: cfgSev, method: 'balanced', strength: 1 }, obsType, obsSev);
+    assert.ok(bal > comp * 1.1 && bal > none * 1.5, `${obsType} ${obsSev} (set ${cfgType} ${cfgSev}): none ${none.toFixed(1)} comp ${comp.toFixed(1)} balanced ${bal.toFixed(1)}`);
+  }
 });
 
 import { Segmenter } from '../docs/js/segment.js';
-import { severityFromThreshold, axisDir, maxContrast, fitObserver, perceivedDE } from '../docs/js/selftest.js';
+import { severityFromThreshold, axisDir, maxContrast, fitObserver, perceivedDE, SelfTest, processLinear, buildLadder, levelDecision } from '../docs/js/selftest.js';
 
 function synthImage(w, h, fn) {
   const data = new Uint8ClampedArray(w * h * 4);
@@ -192,6 +214,84 @@ test('self-test: joint fit recovers type and severity of model observers', () =>
     assert.equal(fit.type, type, `${type} ${sev} -> ${fit.type}`);
     assert.ok(Math.abs(fit.severity - sev) <= 0.15, `${type} ${sev} -> ${fit.severity}`);
   }
+});
+
+test('tuner: ladder escalates and level decisions stop early', () => {
+  const lad = buildLadder('deutan', 60);
+  assert.deepEqual(lad.map((c) => c.method), ['auto', 'balanced', 'enhance', 'enhance']);
+  assert.ok(lad[1].severity > 60 && lad[3].strength > lad[2].strength);
+  assert.deepEqual(buildLadder('protan', 95).map((c) => c.method + c.strength), ['auto100', 'enhance200'], 'no duplicate steps');
+  assert.equal(levelDecision(3, 3), 'pass');
+  assert.equal(levelDecision(0, 2), 'fail');
+  assert.equal(levelDecision(1, 2), null);
+  assert.equal(levelDecision(2, 4), 'fail');
+});
+
+test('tuner: model observers get a verified correction that reveals sub-threshold plates', () => {
+  const el = () => ({ hidden: false, textContent: '', innerHTML: '', classList: { toggle() {} }, addEventListener() {}, appendChild() {} });
+  const els = {};
+  const root = { querySelector: (q) => (els[q] ||= el()), querySelectorAll: () => [] };
+  const ctx = new Proxy({}, { get: (o, k) => (k in o ? o[k] : () => {}), set: (o, k, v) => { o[k] = v; return true; } });
+  const prevDoc = globalThis.document;
+  globalThis.document = { createElement: () => ({ className: '', innerHTML: '' }) };
+  const st = new SelfTest({ root, canvas: { width: 600, height: 600, getContext: () => ctx }, t: (k) => k, onApply() {} });
+  const to8 = (lin) => lin.map((v) => Math.round((v <= 0.0031308 ? v * 12.92 : 1.055 * Math.max(0, Math.min(1, v)) ** (1 / 2.4) - 0.055) * 255));
+  // deterministic observer: sees the gap iff the simulated ΔE exceeds its criterion
+  const run = (type, sev, crit = 3.5) => {
+    st.start();
+    for (let guard = 0; !els['#testRun'].hidden && guard < 200; guard++) {
+      const { dir, c, params } = st.plate;
+      const bg = processLinear([0.18, 0.18, 0.18], params), tg = processLinear(dir.map((d) => (0.2 + c * d) * 0.92), params);
+      const M = machadoMatrix(type, sev);
+      const d = deltaE2000(rgbToLab(...to8(mat3MulVec(M, bg))), rgbToLab(...to8(mat3MulVec(M, tg))));
+      st.answer(d > crit ? st.dirAns : -1);
+    }
+    return st;
+  };
+  try {
+    for (const [type, sev] of [['deutan', 0.7], ['protan', 0.9], ['deutan', 1]]) {
+      const r = run(type, sev);
+      assert.ok(r.result, `${type} ${sev}: no result`);
+      assert.ok(r.result.verified, `${type} ${sev}: correction not verified`);
+      assert.equal(r.verify.rawOk, 0, `${type} ${sev}: uncorrected plates should be invisible`);
+      assert.ok(['protan', 'deutan'].includes(r.result.type));
+    }
+    assert.equal(run('deutan', 0).result, null, 'normal vision: nothing to apply');
+  } finally { globalThis.document = prevDoc; }
+});
+
+test('Ishihara-type plate: invisible to a deuteranope, readable through Strong at 200 %', () => {
+  // pseudo-isochromatic plate as dot colours: background olive/khaki with lightness noise,
+  // figure shifted along the deutan confusion line (so a dichromat sees no difference)
+  let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const pal = [[150, 158, 92], [172, 168, 98], [128, 148, 88], [160, 150, 104]].map((c) => c.map((v) => srgbToLinear(v / 255)));
+  const u = axisDir('deutan');
+  const dots = [];
+  for (let i = 0; i < 600; i++) {
+    const fig = i < 120, base = pal[i % 4].map((v) => v * (0.68 + 0.44 * rnd()));
+    const lin = fig ? base.map((v, k) => v - 0.2 * u[k]) : base;
+    dots.push({ fig, rgb: lin.map((v) => Math.round(linearToSrgb(Math.max(0, Math.min(1, v))) * 255) / 255) });
+  }
+  const dprime = (cfg, obsSev) => {
+    const p = cfg && shaderParams(cfg);
+    const P = dots.map((d) => { const o = p ? processColor(d.rgb, p) : d.rgb; return linRgbToOklab(...simulateColor(o, 'deutan', obsSev).map(srgbToLinear)).map((v) => v * 100); });
+    // Fisher discriminant along the best direction (pooled covariance + 1-JND floor)
+    const A = P.filter((_, i) => dots[i].fig), B = P.filter((_, i) => !dots[i].fig);
+    const mean = (Q) => [0, 1, 2].map((k) => Q.reduce((x, q) => x + q[k], 0) / Q.length);
+    const ma = mean(A), mb = mean(B), S = [];
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) {
+      let v = 0; for (const [Q, m] of [[A, ma], [B, mb]]) for (const q of Q) v += (q[i] - m[i]) * (q[j] - m[j]);
+      S.push(v / (P.length - 2) + (i === j ? 0.6 ** 2 : 0));
+    }
+    const Si = mat3Inverse(S), d = ma.map((v, k) => v - mb[k]);
+    const Sd = mat3MulVec(Si, d);
+    return Math.sqrt(d[0] * Sd[0] + d[1] * Sd[1] + d[2] * Sd[2]);
+  };
+  const normal = dprime(null, 0), blind = dprime(null, 1);
+  const strong = dprime({ type: 'deutan', severity: 0.6, method: 'enhance', strength: 2 }, 1);
+  assert.ok(blind < 1 && normal > 2, `normal ${normal.toFixed(1)}, deuteranope ${blind.toFixed(1)}`);
+  const strong100 = dprime({ type: 'deutan', severity: 0.6, method: 'enhance', strength: 1 }, 1);
+  assert.ok(strong > normal && strong > strong100 * 1.15, `deuteranope: Strong 100 % ${strong100.toFixed(1)}, 200 % ${strong.toFixed(1)}; normal vision ${normal.toFixed(1)}`);
 });
 
 import { estimateWB, gainsFromReference, castOfGains } from '../docs/js/wb.js';
@@ -290,4 +390,22 @@ test('camera labels: facing and lens type (iOS en/zh, Android)', () => {
     assert.equal(guessFacing(label), facing, label);
     assert.equal(lensKind(label), kind, label);
   }
+});
+
+test('app default range (≈0.6) still keeps shaded and textured objects whole, and does not leak', () => {
+  const toS = (v) => Math.round((v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055) * 255);
+  const ball = synthImage(140, 140, (x, y) => {
+    if (Math.hypot(x - 70, y - 70) >= 40) return [205, 200, 192];
+    const k = 1 - 0.67 * ((x - 30) / 80);
+    return [0.05, 0.35, 0.08].map((v) => toS(v * k));
+  });
+  const a = new Segmenter().run(ball, 50, 70, { sens: 0.6, temporal: false }).area;
+  assert.ok(Math.abs(a - 0.256) < 0.02, `shaded ball ${a.toFixed(3)}`);
+  const leak = synthImage(160, 120, (x, y) => {
+    const inDisc = Math.hypot(x - 50, y - 60) < 30, bridge = x >= 80 && x < 100 && Math.abs(y - 60) <= 1;
+    if (inDisc || bridge) return [170, 40, 25];
+    return x >= 100 ? [190, 110, 60] : [60, 60, 66];
+  });
+  const b = new Segmenter().run(leak, 50, 60, { sens: 0.6, temporal: false }).area;
+  assert.ok(b < 0.17, `leak ${b.toFixed(3)}`);
 });

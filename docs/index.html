@@ -92,8 +92,8 @@
           <div>
             <div class="chips" id="methodChips">
               <button data-method="auto" data-i18n="m.auto"></button>
+              <button data-method="balanced" data-i18n="m.balanced"></button>
               <button data-method="compensate" data-i18n="m.compensate"></button>
-              <button data-method="daltonize" data-i18n="m.daltonize"></button>
               <button data-method="enhance" data-i18n="m.enhance"></button>
               <button data-method="simulate" data-i18n="m.simulate"></button>
             </div>
@@ -101,12 +101,11 @@
           </div>
           <div class="row-inline">
             <div class="label"><span data-i18n="cvd.strength"></span><output id="strOut"></output></div>
-            <input type="range" id="strength" min="0" max="100" step="5" value="100">
+            <input type="range" id="strength" min="0" max="200" step="5" value="100">
           </div>
           <div class="toggles">
             <label class="tog"><input type="checkbox" id="optSplit"><span data-i18n="cvd.split"></span></label>
             <label class="tog"><input type="checkbox" id="optPreview"><span data-i18n="cvd.preview"></span></label>
-            <label class="tog"><input type="checkbox" id="optShowId" checked><span data-i18n="cvd.showId"></span></label>
           </div>
         </div>
       </section>
@@ -200,7 +199,7 @@
         <div class="srow">
           <div class="label" data-i18n="settings.about"></div>
           <p class="desc" data-i18n="about.text"></p>
-          <p class="desc version">v1.1.0 · <a href="https://ruilin.li/AnomalousTrichromatismHelper/" target="_blank" rel="noopener">ruilin.li</a></p>
+          <p class="desc version">v1.3.0 · <a href="https://ruilin.li/AnomalousTrichromatismHelper/" target="_blank" rel="noopener">ruilin.li</a></p>
         </div>
       </div>
     </section>
@@ -253,6 +252,7 @@
         <div id="testResult" hidden>
           <h3 data-i18n="test.result"></h3>
           <p id="testResultText" class="result-text"></p>
+          <p id="testVerify" class="verify-note" hidden></p>
           <div id="testBars"></div>
           <div class="btn-row">
             <button id="btnTestApply" class="primary" data-i18n="test.apply"></button>
