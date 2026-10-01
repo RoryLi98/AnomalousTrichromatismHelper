@@ -8,7 +8,7 @@
 
 [**Open the app →**](https://ruilin.li/AnomalousTrichromatismHelper/) &nbsp;·&nbsp; [中文](README.md)
 
-<a href="https://ruilin.li/AnomalousTrichromatismHelper/"><img src="https://img.shields.io/badge/version-1.3.5-2ea44f" alt="version 1.3.5"></a>
+<a href="https://ruilin.li/AnomalousTrichromatismHelper/"><img src="https://img.shields.io/badge/version-1.3.6-2ea44f" alt="version 1.3.6"></a>
 <img src="https://img.shields.io/badge/PWA-installable-5a0fc8" alt="PWA">
 <img src="https://img.shields.io/badge/correction-real--time_WebGL-d9480f" alt="real-time WebGL correction">
 <img src="https://img.shields.io/badge/platform-Android_%7C_iOS_15%2B-1f6feb" alt="Android / iOS 15+">
@@ -27,7 +27,7 @@
 ## What it does
 
 - **Identify**: a reticle sits in the middle of the screen (5 styles and 3 sizes; the default leaves the centre open so it does not hide what you aim at). Whatever it points at gets a color name, and the whole region of that color is outlined. Shadows, highlights and fabric texture don't break an object apart, and the region doesn't leak through thin gaps into similar colors next to it.
-- **Two color sets**: 12 basic colors (red, orange, yellow, green…), or 150+ detailed names such as “Brick red” and “Olive green”, plus a systematic description like “dark yellow-green”. Colors between two categories get a “may also be called…” hint.
+- **Two color sets**: 12 basic colors (red, orange, yellow, green…), or 150+ detailed names such as “Brick red” and “Olive green”, plus a systematic description like “dark yellow-green”. Colors between two categories get a “may also be called…” hint. Switch with “Name: Basic | Exact” at the bottom right of the color card.
 - **Real-time correction**: every pixel of the camera feed is processed on the GPU, turning the red–green differences you can't see into lightness and blue–yellow differences you can. Choose protan, deutan or tritan and a severity of 0–100 %, with a split-screen comparison.
 - **Tune**: a two-step test of about two minutes. It measures your type and severity, then blind-tests the correction with patterns below your own threshold and strengthens it if they are still not clear.
 - **Color-plate tests**: in “Strong” mode at 170–200 %, the figure in a dot plate turns bright blue on a yellow background.

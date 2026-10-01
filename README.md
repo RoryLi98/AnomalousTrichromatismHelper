@@ -8,7 +8,7 @@
 
 [**在线打开 →**](https://ruilin.li/AnomalousTrichromatismHelper/) &nbsp;·&nbsp; [English](README.en.md)
 
-<a href="https://ruilin.li/AnomalousTrichromatismHelper/"><img src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-1.3.5-2ea44f" alt="版本 1.3.5"></a>
+<a href="https://ruilin.li/AnomalousTrichromatismHelper/"><img src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-1.3.6-2ea44f" alt="版本 1.3.6"></a>
 <img src="https://img.shields.io/badge/PWA-%E5%8F%AF%E5%AE%89%E8%A3%85%E5%88%B0%E4%B8%BB%E5%B1%8F%E5%B9%95-5a0fc8" alt="PWA">
 <img src="https://img.shields.io/badge/%E7%9F%AB%E6%AD%A3-WebGL_%E5%AE%9E%E6%97%B6-d9480f" alt="WebGL 实时矫正">
 <img src="https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Android_%7C_iOS_15%2B-1f6feb" alt="Android / iOS 15+">
@@ -27,7 +27,7 @@
 ## 它能做什么
 
 - **识色**：屏幕中央有一个准星（5 种样式、3 种大小可选，默认中心留空不挡视线），对准什么就读出什么颜色，同时勾出同一种颜色的整块区域。阴影、反光、布料纹理不会把一个物体切碎，也不会顺着细缝漏到旁边相近的颜色里。
-- **两套颜色名**：基础 12 色（红、橙、黄、绿……），或 150 多个精细名称（如“砖红”“橄榄绿”），附带“深黄绿色”这类系统描述；颜色在两类之间时会提示“也可能被叫作……”。
+- **两套颜色名**：大类 12 色（红、橙、黄、绿……），或 150 多个精确名称（如“砖红”“橄榄绿”），附带“深黄绿色”这类系统描述；颜色在两类之间时会提示“也可能被叫作……”。颜色卡右下角的“色名 大类 | 精确”随时切换。
 - **实时矫正**：在 GPU 上逐像素处理摄像头画面，把你分不清的红绿差异转成你看得见的明暗和蓝黄差异。可选红色弱、绿色弱、蓝色弱三种类型和 0–100% 程度，支持分屏对比。
 - **调校**：约 2 分钟的两步小测试。先测出类型和程度，再用低于你分辨极限的图案盲测矫正效果，不够清楚就自动加强。
 - **看色盲检查图**：用“强力”模式把强度推到 170–200%，点阵图里的数字会变成黄色背景上的亮蓝色。

@@ -10,7 +10,7 @@ import { Camera, cameraErrorKey, guessFacing, lensKind, frameAspect } from './ca
 import { SelfTest } from './selftest.js';
 import { reticleSVG, RETICLE_STYLES } from './reticle.js';
 
-export const APP_VERSION = '1.3.5';
+export const APP_VERSION = '1.3.6';
 const $ = (id) => document.getElementById(id);
 const app = $('app'), video = $('video'), overlay = $('overlay');
 let view = $('view');
@@ -471,7 +471,7 @@ function updateCard() {
   if (naming.alt) st.push(esc(t('card.maybe', { x: naming.alt[lang] })));
   $('colorStatus').innerHTML = st.join(' · ');
   // one line with the values only
-  $('colorSub').innerHTML = S.values ? `<span class="hex" data-hex="${hex}">${hex}</span> · RGB ${rgb.join(', ')}` : '';
+  $('colorSub').innerHTML = S.values ? `<span class="hex" data-hex="${hex}">${hex}</span> · <span class="rgb">RGB ${rgb.join(', ')}</span>` : '';
 }
 
 function speakText(text) {
@@ -1022,7 +1022,10 @@ function bind() {
   const stop = () => { delete track.dataset.drag; };
   track.addEventListener('pointerup', stop); track.addEventListener('pointercancel', stop);
 
-  const setSet = (v) => { S.set = v; save(); R.shownKey = null; syncSettingsUI(); requestAnalysis(); };
+  const setSet = (v) => {
+    if (v !== S.set) showHud(t('set.hud.' + v), 2600); // say what the switch does
+    S.set = v; save(); R.shownKey = null; syncSettingsUI(); requestAnalysis();
+  };
   document.querySelectorAll('#setSeg button').forEach((b) => b.addEventListener('click', () => setSet(b.dataset.set)));
   $('btnUpdate').addEventListener('click', checkUpdate);
   buildReticlePicker();
