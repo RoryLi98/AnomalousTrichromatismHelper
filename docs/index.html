@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#0E1116">
+  <meta name="description" content="色觉助手：实时识别颜色、分割色块，并为色弱/色盲用户实时矫正视频颜色。Color Vision Helper: name colors, outline color regions and correct colors live for color-vision deficiency.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="色觉助手">
+  <title>色觉助手</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 5l12 7-12 7z"/></symbol>
+      <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/></symbol>
+      <symbol id="i-flip" viewBox="0 0 24 24"><path d="M4.5 10A8 8 0 0 1 18 6.5M19.5 14A8 8 0 0 1 6 17.5"/><path d="M18.5 2.5v4.2h-4.2M5.5 21.5v-4.2h4.2"/></symbol>
+      <symbol id="i-torch" viewBox="0 0 24 24"><path d="M7 3h10v3l-3 4v11h-4V10L7 6z"/><path d="M12 13v2"/></symbol>
+      <symbol id="i-speak" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 9a4 4 0 0 1 0 6M19 6.5a7.5 7.5 0 0 1 0 11"/></symbol>
+      <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6h9M19 6h1M4 12h3M13 12h7M4 18h11M21 18h-1"/><circle cx="16" cy="6" r="2.5"/><circle cx="10" cy="12" r="2.5"/><circle cx="18" cy="18" r="2.5"/></symbol>
+      <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18"/></symbol>
+      <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.8-7 10-7 10 7 10 7-3.8 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+      <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></symbol>
+      <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+      <symbol id="i-camera" viewBox="0 0 24 24"><path d="M3.5 8h3.5l2-3h6l2 3h3.5v11h-17z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+      <symbol id="i-test" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v4M12 16.5v4"/><circle cx="8.5" cy="10" r="1.2"/><circle cx="15" cy="9" r="1.2"/><circle cx="10" cy="15" r="1.2"/><circle cx="15.5" cy="14.5" r="1.2"/></symbol>
+      <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.4 0 2-1 2-2 0-1.6-1.6-1.8-1.6-3.2 0-1 .8-1.8 1.9-1.8H17a4 4 0 0 0 4-4C21 6.5 17 3 12 3z"/><circle cx="7.5" cy="11" r="1.3"/><circle cx="10" cy="7" r="1.3"/><circle cx="15" cy="7" r="1.3"/></symbol>
+    </defs>
+  </svg>
+
+  <main id="app" class="mode-identify">
+    <video id="video" playsinline muted autoplay></video>
+    <canvas id="view" aria-label="camera view"></canvas>
+    <canvas id="overlay" aria-hidden="true"></canvas>
+    <div id="reticle" aria-hidden="true"><span class="ring"></span></div>
+    <div id="splitLabels" hidden><span data-i18n="cvd.split.left"></span><span data-i18n="cvd.split.right"></span></div>
+
+    <header class="topbar">
+      <div class="seg mode-switch" role="tablist">
+        <button id="modeIdentify" role="tab" aria-selected="true"><svg class="ic"><use href="#i-palette"/></svg><span data-i18n="mode.identify"></span></button>
+        <button id="modeCorrect" role="tab" aria-selected="false"><svg class="ic"><use href="#i-eye"/></svg><span data-i18n="mode.correct"></span></button>
+      </div>
+      <div class="top-actions">
+        <button id="btnLang" class="chip-btn"><svg class="ic"><use href="#i-globe"/></svg><span data-i18n="tool.lang"></span></button>
+        <button id="btnSettings" class="icon-btn" data-i18n-aria="tool.settings"><svg class="ic"><use href="#i-sliders"/></svg></button>
+      </div>
+    </header>
+
+    <button id="btnRecenter" class="float-btn" hidden data-i18n-aria="tool.recenter"><svg class="ic"><use href="#i-target"/></svg><span data-i18n="tool.recenter"></span></button>
+    <div id="zoomBadge" hidden>1.0×</div>
+
+    <section class="bottom">
+      <section id="correctPanel" class="panel" aria-label="correction">
+        <div class="cp-head">
+          <button id="cpToggle" class="cp-sum" aria-expanded="true">
+            <span id="cpSummary"></span>
+            <svg class="ic chev"><use href="#i-chevron"/></svg>
+          </button>
+          <button id="btnTest" class="chip-btn small"><svg class="ic"><use href="#i-test"/></svg><span data-i18n="cvd.test"></span></button>
+        </div>
+        <div class="cp-body">
+          <div class="seg seg-wide" id="typeSeg" role="tablist">
+            <button data-type="protan"><b data-i18n="cvd.protan"></b><small data-i18n="cvd.protan.sub"></small></button>
+            <button data-type="deutan"><b data-i18n="cvd.deutan"></b><small data-i18n="cvd.deutan.sub"></small></button>
+            <button data-type="tritan"><b data-i18n="cvd.tritan"></b><small data-i18n="cvd.tritan.sub"></small></button>
+          </div>
+          <div class="row-inline">
+            <div class="label"><span data-i18n="cvd.severity"></span><output id="sevOut"></output></div>
+            <input type="range" id="severity" min="0" max="100" step="5" value="60">
+          </div>
+          <div>
+            <div class="chips" id="methodChips">
+              <button data-method="auto" data-i18n="m.auto"></button>
+              <button data-method="compensate" data-i18n="m.compensate"></button>
+              <button data-method="daltonize" data-i18n="m.daltonize"></button>
+              <button data-method="enhance" data-i18n="m.enhance"></button>
+              <button data-method="simulate" data-i18n="m.simulate"></button>
+            </div>
+            <p class="desc" id="methodDesc"></p>
+          </div>
+          <div class="row-inline">
+            <div class="label"><span data-i18n="cvd.strength"></span><output id="strOut"></output></div>
+            <input type="range" id="strength" min="0" max="100" step="5" value="100">
+          </div>
+          <div class="toggles">
+            <label class="tog"><input type="checkbox" id="optSplit"><span data-i18n="cvd.split"></span></label>
+            <label class="tog"><input type="checkbox" id="optPreview"><span data-i18n="cvd.preview"></span></label>
+            <label class="tog"><input type="checkbox" id="optShowId" checked><span data-i18n="cvd.showId"></span></label>
+          </div>
+        </div>
+      </section>
+
+      <section id="card" class="panel" aria-live="polite">
+        <div class="card-main">
+          <div id="swatch"></div>
+          <div class="card-text">
+            <div id="colorName" class="name" data-i18n="card.waiting"></div>
+            <div id="colorAlt" class="alt"></div>
+          </div>
+          <button id="btnSpeak" class="icon-btn" data-i18n-aria="tool.speak"><svg class="ic"><use href="#i-speak"/></svg></button>
+        </div>
+        <div class="card-foot">
+          <div id="colorSub" class="sub"></div>
+          <div class="seg seg-mini" id="setSeg">
+            <button data-set="basic" data-i18n="set.basic"></button>
+            <button data-set="detailed" data-i18n="set.detailed"></button>
+          </div>
+        </div>
+      </section>
+
+      <nav class="toolbar">
+        <button id="btnFreeze"><svg class="ic"><use href="#i-pause"/></svg><span data-i18n="tool.freeze"></span></button>
+        <button id="btnPhoto"><svg class="ic"><use href="#i-image"/></svg><span data-i18n="tool.photo"></span></button>
+        <button id="btnFlip"><svg class="ic"><use href="#i-flip"/></svg><span data-i18n="tool.flip"></span></button>
+        <button id="btnTorch" disabled><svg class="ic"><use href="#i-torch"/></svg><span data-i18n="tool.torch"></span></button>
+      </nav>
+    </section>
+
+    <!-- start / permission screen -->
+    <section id="start" class="sheet-full">
+      <div class="start-inner">
+        <img src="icons/icon-192.png" alt="" width="88" height="88" class="logo">
+        <h1 data-i18n="app.title"></h1>
+        <p class="tagline" data-i18n="start.tagline"></p>
+        <p id="startError" class="error" hidden></p>
+        <button id="btnStart" class="primary"><svg class="ic"><use href="#i-camera"/></svg><span data-i18n="start.camera"></span></button>
+        <button id="btnStartPhoto" class="secondary"><svg class="ic"><use href="#i-image"/></svg><span data-i18n="start.photo"></span></button>
+        <button id="btnStartLang" class="link"><svg class="ic"><use href="#i-globe"/></svg><span data-i18n="tool.lang"></span></button>
+        <p class="note" data-i18n="start.note"></p>
+      </div>
+    </section>
+
+    <!-- settings -->
+    <section id="settings" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <div class="sheet-inner">
+        <div class="sheet-head">
+          <h2 id="settingsTitle" data-i18n="settings.title"></h2>
+          <button id="btnSettingsClose" class="chip-btn" data-i18n="settings.close"></button>
+        </div>
+        <div class="srow">
+          <div class="label" data-i18n="settings.language"></div>
+          <div class="seg seg-wide" id="langSeg">
+            <button data-lang="zh">中文</button>
+            <button data-lang="en">English</button>
+          </div>
+        </div>
+        <div class="srow">
+          <div class="label" data-i18n="settings.colorset"></div>
+          <div class="seg seg-wide seg-tall" id="setSeg2">
+            <button data-set="basic"><b data-i18n="set.basic"></b><small data-i18n="settings.basicDesc"></small></button>
+            <button data-set="detailed"><b data-i18n="set.detailed"></b><small data-i18n="settings.detailedDesc"></small></button>
+          </div>
+        </div>
+        <label class="tog srow"><input type="checkbox" id="optBilingual"><span data-i18n="settings.bilingual"></span></label>
+        <label class="tog srow"><input type="checkbox" id="optOutline" checked><span data-i18n="settings.outline"></span></label>
+        <label class="tog srow"><input type="checkbox" id="optDim"><span data-i18n="settings.dim"></span></label>
+        <div class="srow">
+          <div class="label"><span data-i18n="settings.tolerance"></span></div>
+          <div class="range-ends"><small data-i18n="settings.tolerance.tight"></small><input type="range" id="tolerance" min="3" max="16" step="1" value="8"><small data-i18n="settings.tolerance.loose"></small></div>
+        </div>
+        <label class="tog srow"><input type="checkbox" id="optValues" checked><span data-i18n="settings.values"></span></label>
+        <label class="tog srow"><input type="checkbox" id="optAutoSpeak"><span data-i18n="settings.autospeak"></span></label>
+        <div class="srow">
+          <div class="label"><span data-i18n="settings.wb"></span> · <span id="wbState"></span></div>
+          <p class="desc" data-i18n="settings.wbHelp"></p>
+          <div class="btn-row">
+            <button id="btnWB" class="secondary small" data-i18n="settings.wbCalibrate"></button>
+            <button id="btnWBReset" class="secondary small" data-i18n="settings.wbReset"></button>
+          </div>
+        </div>
+        <div class="srow">
+          <div class="label" data-i18n="settings.about"></div>
+          <p class="desc" data-i18n="about.text"></p>
+          <p class="desc version">v1.0.0 · <a href="https://ruilin.li/AnomalousTrichromatismHelper/" target="_blank" rel="noopener">ruilin.li</a></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- quick self-test -->
+    <section id="test" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="testTitle">
+      <div class="sheet-inner test-inner">
+        <div class="sheet-head">
+          <h2 id="testTitle" data-i18n="test.title"></h2>
+          <button id="btnTestClose" class="icon-btn" data-i18n-aria="test.close"><svg class="ic"><use href="#i-close"/></svg></button>
+        </div>
+        <div id="testIntro">
+          <p class="desc" data-i18n="test.intro"></p>
+          <button id="btnTestStart" class="primary" data-i18n="test.start"></button>
+        </div>
+        <div id="testRun" hidden>
+          <p class="progress" id="testProgress"></p>
+          <canvas id="testCanvas" width="600" height="600"></canvas>
+          <div class="dir-pad">
+            <button data-dir="0" class="d-up" data-i18n="dir.up"></button>
+            <button data-dir="3" class="d-left" data-i18n="dir.left"></button>
+            <button data-dir="-1" class="d-none" data-i18n="test.cantSee"></button>
+            <button data-dir="1" class="d-right" data-i18n="dir.right"></button>
+            <button data-dir="2" class="d-down" data-i18n="dir.down"></button>
+          </div>
+        </div>
+        <div id="testResult" hidden>
+          <h3 data-i18n="test.result"></h3>
+          <p id="testResultText" class="result-text"></p>
+          <div id="testBars"></div>
+          <div class="btn-row">
+            <button id="btnTestApply" class="primary" data-i18n="test.apply"></button>
+            <button id="btnTestRetry" class="secondary" data-i18n="test.retry"></button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+    <input type="file" id="fileInput" accept="image/*" hidden>
+  </main>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
