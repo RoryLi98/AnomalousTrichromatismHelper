@@ -173,34 +173,30 @@
           <h2 id="settingsTitle" data-i18n="settings.title"></h2>
           <button id="btnSettingsClose" class="chip-btn" data-i18n="settings.close"></button>
         </div>
-        <div class="srow">
-          <div class="label" data-i18n="settings.language"></div>
-          <div class="seg seg-wide" id="langSeg">
-            <button data-lang="zh">中文</button>
-            <button data-lang="en">English</button>
-          </div>
-        </div>
-        <div class="srow">
-          <div class="label" data-i18n="settings.colorset"></div>
-          <div class="seg seg-wide seg-tall" id="setSeg2">
-            <button data-set="basic"><b data-i18n="set.basic"></b><small data-i18n="settings.basicDesc"></small></button>
-            <button data-set="detailed"><b data-i18n="set.detailed"></b><small data-i18n="settings.detailedDesc"></small></button>
-          </div>
-        </div>
+        <div class="sgroup" data-i18n="settings.groupId"></div>
         <label class="tog srow"><input type="checkbox" id="optBilingual"><span data-i18n="settings.bilingual"></span></label>
+        <label class="tog srow"><input type="checkbox" id="optValues" checked><span data-i18n="settings.values"></span></label>
         <label class="tog srow"><input type="checkbox" id="optOutline" checked><span data-i18n="settings.outline"></span></label>
         <label class="tog srow"><input type="checkbox" id="optDim"><span data-i18n="settings.dim"></span></label>
-        <label class="tog srow"><input type="checkbox" id="optValues" checked><span data-i18n="settings.values"></span></label>
         <label class="tog srow"><input type="checkbox" id="optAutoSpeak"><span data-i18n="settings.autospeak"></span></label>
-        <div class="srow">
-          <div class="label" data-i18n="settings.tips"></div>
+        <div class="sgroup" data-i18n="settings.groupApp"></div>
+        <details class="srow fold">
+          <summary data-i18n="settings.tips"></summary>
           <p class="desc" data-i18n="settings.tipsText"></p>
+        </details>
+        <div class="srow srow-btn">
+          <div><div class="srow-title" data-i18n="settings.version"></div><div class="desc" id="appVersion"></div></div>
+          <button id="btnUpdate" class="chip-btn" data-i18n="settings.update"></button>
         </div>
-        <div class="srow">
-          <div class="label" data-i18n="settings.about"></div>
+        <div class="srow srow-btn">
+          <div><div class="srow-title" data-i18n="settings.resetTitle"></div><div class="desc" data-i18n="settings.resetDesc"></div></div>
+          <button id="btnReset" class="chip-btn" data-i18n="settings.reset"></button>
+        </div>
+        <details class="srow fold">
+          <summary data-i18n="settings.about"></summary>
           <p class="desc" data-i18n="about.text"></p>
-          <p class="desc version">v1.3.1 · <a href="https://ruilin.li/AnomalousTrichromatismHelper/" target="_blank" rel="noopener">ruilin.li</a></p>
-        </div>
+          <p class="desc version"><a href="https://ruilin.li/AnomalousTrichromatismHelper/" target="_blank" rel="noopener">ruilin.li/AnomalousTrichromatismHelper</a></p>
+        </details>
       </div>
     </section>
 
@@ -215,6 +211,7 @@
           <div class="label" data-i18n="cam.choose"></div>
           <div id="camList" class="cam-list"></div>
           <p class="desc" id="camInfo"></p>
+          <p class="desc cam-limits" id="camLimits" hidden></p>
         </div>
         <div class="srow">
           <div class="label" data-i18n="cam.frame"></div>

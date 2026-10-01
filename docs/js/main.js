@@ -6,9 +6,10 @@ import { shaderParams, resolveMethod } from './cvd.js';
 import { Segmenter } from './segment.js';
 import { estimateWB, gainsFromReference, castOfGains } from './wb.js';
 import { Renderer } from './gl.js';
-import { Camera, cameraErrorKey, guessFacing, lensKind } from './camera.js';
+import { Camera, cameraErrorKey, guessFacing, lensKind, frameAspect } from './camera.js';
 import { SelfTest } from './selftest.js';
 
+export const APP_VERSION = '1.3.3';
 const $ = (id) => document.getElementById(id);
 const app = $('app'), video = $('video'), overlay = $('overlay');
 let view = $('view');
@@ -17,7 +18,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // ---------------- settings (persisted per device) ----------------
 const STORE_KEY = 'cvh.settings.v1';
 const DEFAULTS = {
-  lang: detectLang(), set: 'basic', bilingual: false, outline: true, dim: false,
+  lang: detectLang(), set: 'detailed', bilingual: false, outline: true, dim: false,
   values: true, autoSpeak: false, mode: 'identify',
   wbMode: 'auto', wb: [1, 1, 1], wbLocked: false, wbCalibrated: false, // white balance: auto | manual | off
   segPos: 0.5,                                     // region range slider position (0..1, non-linear)
@@ -154,7 +155,7 @@ function layout() {
   if (changed) { R.newFrame = true; requestAnalysis(); }
 }
 
-const CARD_RESERVE = 172, PANEL_RESERVE = 70; // identify: colour card; correct: collapsed panel
+const CARD_RESERVE = 118, PANEL_RESERVE = 64; // identify: colour card; correct: collapsed panel
 
 /** Cover-crop of the source matching the picture rect (and digital zoom), in source pixels. */
 function crop() {
@@ -354,7 +355,8 @@ function onRegionResult(out) {
     const a = R.wbSeen < 3 ? 0.6 : 0.12;
     R.autoWB = R.autoWB.map((v, k) => v + (out.wb.gains[k] - v) * a);
     R.wbSeen++;
-    R.autoCast = castOfGains(R.autoWB);
+    const cast = castOfGains(R.autoWB);
+    if (cast !== R.autoCast) { R.autoCast = cast; if (wbOpen()) syncWBUI(); }
     applyWB();
   }
   if (!meta || out.id !== meta.id) return;
@@ -465,13 +467,13 @@ function updateCard() {
   if (p && p.clipped > 0.35) st.push(WARN_SVG + esc(t('warn.over')));
   else if (p && p.Y < 0.012) st.push(WARN_SVG + esc(t('warn.dark')));
   if (naming.alt) st.push(esc(t('card.maybe', { x: naming.alt[lang] })));
-  if (S.wbMode === 'auto' && R.autoCast && st.length < 2) st.push(esc(t('cast.' + R.autoCast)));
   $('colorStatus').innerHTML = st.join(' · ');
+  // one line: values, then where the colour came from (the light colour lives in the WB panel)
   const sub = [];
-  if (S.values) sub.push(`<span class="hex" data-hex="${hex}">${hex}</span> · RGB ${rgb.join(', ')}`);
-  const area = R.lastRes && R.lastRes.area > 0 ? t('card.area', { p: Math.max(1, Math.round(R.lastRes.area * 100)) }) : '';
-  sub.push([area, t(R.colorSrc === 'region' ? 'card.fromRegion' : 'card.fromPoint')].filter(Boolean).join(' · '));
-  $('colorSub').innerHTML = sub.join('<br>');
+  if (S.values) sub.push(`<span class="hex" data-hex="${hex}">${hex}</span>`, `RGB ${rgb.join(',')}`);
+  if (R.colorSrc === 'region' && R.lastRes && R.lastRes.area > 0) sub.push(esc(t('card.area', { p: Math.max(1, Math.round(R.lastRes.area * 100)) })));
+  else sub.push(esc(t('card.fromPoint')));
+  $('colorSub').innerHTML = sub.join(' · ');
 }
 
 function speakText(text) {
@@ -511,11 +513,14 @@ async function startCamera(opts = {}) {
   const startedAt = performance.now();
   const errEl = $('startError');
   errEl.hidden = true;
+  // the camera that was running, to go back to if the one the user picked cannot be opened
+  const prev = R.kind === 'camera' && camera.deviceId ? { deviceId: camera.deviceId, facing: camera.facing } : null;
   try {
-    const want = { deviceId: opts.deviceId !== undefined ? opts.deviceId : S.camId, facing: opts.facing || S.camFacing };
+    const want = { deviceId: opts.deviceId !== undefined ? opts.deviceId : S.camId, facing: opts.facing || S.camFacing, strict: !!opts.strict };
     await camera.start(want);
     if (R.kind === 'photo' && R.photoAt > startedAt) { camera.stop(); return false; }
     R.source = video; R.kind = 'camera'; R.newFrame = true; R.smooth = null; R.shownKey = null; R.zoom = 1;
+    if (R.camFail) delete R.camFail[camera.deviceId];
     S.camId = camera.deviceId; S.camFacing = camera.facing; save();
     $('start').hidden = true;
     if (S.wbMode === 'manual' && S.wbLocked) camera.lockWB();
@@ -534,8 +539,15 @@ async function startCamera(opts = {}) {
     }
     return true;
   } catch (err) {
-    if (err.name === 'AbortError') return false; // superseded by a newer request
+    if (err.name === 'SupersededError') return false; // replaced by a newer request
     console.warn(err);
+    if (opts.strict) {
+      // keep the user informed and go back to the camera that worked
+      (R.camFail ||= {})[opts.deviceId] = err.name;
+      toast(t('cam.openFail', { name: opts.name || '', why: t(camWhyKey(err)) }), 5000);
+      if (prev && prev.deviceId !== opts.deviceId) await startCamera({ deviceId: prev.deviceId, facing: prev.facing });
+      return false;
+    }
     const key = cameraErrorKey(err);
     R.lastErr = { key, msg: err.message || err.name };
     errEl.textContent = t(key, { msg: R.lastErr.msg });
@@ -655,18 +667,44 @@ async function openCamSheet() {
     const cur = R.kind === 'camera' && c.deviceId && c.deviceId === camera.deviceId;
     b.setAttribute('aria-pressed', String(cur));
     b.innerHTML = `<span class="cam-name">${esc(names[i])}${cur ? ` <em>${esc(t('cam.current'))}</em>` : ''}</span><small>${esc(c.label || c.deviceId.slice(0, 8))}</small>`;
+    const why = R.camFail && R.camFail[c.deviceId];
+    if (why && !cur) {
+      b.classList.add('failed');
+      b.insertAdjacentHTML('beforeend', `<small class="cam-fail">${esc(t('cam.failedTag'))}</small>`);
+    }
     b.addEventListener('click', async () => {
+      if (cur) return;
       list.querySelectorAll('.cam-item').forEach((x) => { x.disabled = true; });
-      const ok = await startCamera({ deviceId: c.deviceId, facing: c.facing || undefined });
+      b.classList.add('busy');
+      b.querySelector('.cam-name').insertAdjacentHTML('beforeend', ` <em>${esc(t('cam.opening'))}</em>`);
+      const ok = await startCamera({ deviceId: c.deviceId, facing: c.facing || undefined, strict: true, name: names[i] });
       if (ok) { S.camId = camera.deviceId; save(); }
       openCamSheet();
     });
     list.appendChild(b);
   }
-  const st = camera.settings, z = camera.zoomRange;
-  $('camInfo').textContent = R.kind === 'camera' && st.width
-    ? t('cam.info', { res: `${st.width}×${st.height}`, zoom: z ? t('cam.zoomInfo', { min: +z.min.toFixed(1), max: +z.max.toFixed(1) }) : '' })
+  const z = camera.zoomRange, vw = video.videoWidth, vh = video.videoHeight;
+  const ar = frameAspect(vw, vh);
+  const arText = ar < 1.05 ? '1:1' : Math.abs(ar - 4 / 3) < 0.05 ? (vw < vh ? '3:4' : '4:3') : Math.abs(ar - 16 / 9) < 0.06 ? (vw < vh ? '9:16' : '16:9') : ar.toFixed(2);
+  $('camInfo').textContent = R.kind === 'camera' && vw
+    ? t('cam.info', { res: `${vw}×${vh}`, ar: arText, zoom: z ? t('cam.zoomInfo', { min: +z.min.toFixed(1), max: +z.max.toFixed(1) }) : '' })
+      + (camera.fullSensor === false ? ' ' + t('cam.cropped') : '')
     : '';
+  // what this browser lets a web page do with the camera
+  const limited = R.kind === 'camera' && !z && !camera.torchSupported;
+  $('camLimits').hidden = !limited;
+  if (limited) $('camLimits').textContent = t('cam.limited');
+}
+
+/** Short reason for a camera that would not open. */
+function camWhyKey(err) {
+  switch (err && err.name) {
+    case 'NotReadableError': case 'AbortError': return 'cam.why.blocked';
+    case 'NotFoundError': case 'OverconstrainedError': return 'cam.why.gone';
+    case 'WrongCameraError': return 'cam.why.wrong';
+    case 'NotAllowedError': return 'err.denied';
+    default: return 'cam.why.other';
+  }
 }
 
 function syncFrameUI() {
@@ -823,8 +861,8 @@ function syncCorrectUI() {
 }
 
 function syncSettingsUI() {
-  document.querySelectorAll('#langSeg button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.lang === getLang())));
-  document.querySelectorAll('#setSeg button, #setSeg2 button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.set === S.set)));
+  document.querySelectorAll('#setSeg button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.set === S.set)));
+  $('appVersion').textContent = 'v' + APP_VERSION;
   $('optBilingual').checked = S.bilingual; $('optOutline').checked = S.outline; $('optDim').checked = S.dim;
   $('optValues').checked = S.values; $('optAutoSpeak').checked = S.autoSpeak;
 }
@@ -832,6 +870,7 @@ function syncSettingsUI() {
 function syncWBUI() {
   document.querySelectorAll('#wbSeg button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.wb === S.wbMode)));
   let desc = t('wb.desc.' + S.wbMode);
+  if (S.wbMode === 'auto' && R.autoCast) desc = t('cast.' + R.autoCast) + (getLang() === 'zh' ? '。' : '. ') + desc;
   if (S.wbMode === 'manual' && S.wbCalibrated) desc = t('wb.desc.manualDone', { lock: S.wbLocked ? t('wb.locked') : '' });
   $('wbDesc').textContent = desc;
   // before the first white-card calibration the hint sits on the picture next to the target
@@ -967,8 +1006,9 @@ function bind() {
   track.addEventListener('pointerup', stop); track.addEventListener('pointercancel', stop);
 
   const setSet = (v) => { S.set = v; save(); R.shownKey = null; syncSettingsUI(); requestAnalysis(); };
-  document.querySelectorAll('#setSeg button, #setSeg2 button').forEach((b) => b.addEventListener('click', () => setSet(b.dataset.set)));
-  document.querySelectorAll('#langSeg button').forEach((b) => b.addEventListener('click', () => setLanguage(b.dataset.lang)));
+  document.querySelectorAll('#setSeg button').forEach((b) => b.addEventListener('click', () => setSet(b.dataset.set)));
+  $('btnUpdate').addEventListener('click', checkUpdate);
+  $('btnReset').addEventListener('click', resetSettings);
 
   const bindToggle = (id, key, after) => $(id).addEventListener('change', (e) => { S[key] = e.target.checked; save(); if (after) after(); });
   bindToggle('optBilingual', 'bilingual', updateCard);
@@ -1107,6 +1147,50 @@ async function boot() {
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
+}
+
+// ---------------- settings: update & reset ----------------
+/** Ask the server for the deployed version; if it is newer, drop every cached copy and reload. */
+async function checkUpdate() {
+  const btn = $('btnUpdate');
+  btn.disabled = true;
+  try {
+    const res = await fetch('sw.js?check=' + Date.now(), { cache: 'no-store' });
+    const m = res.ok && (await res.text()).match(/cvh-v([\d.]+)/);
+    const remote = m ? m[1] : null;
+    if (!remote) throw new Error('no version');
+    if (remote === APP_VERSION) { toast(t('settings.updateNone', { v: APP_VERSION })); return; }
+    toast(t('settings.updateFound', { v: remote }), 4000);
+    try {
+      const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration();
+      if (reg) await reg.update();
+      if (window.caches) await Promise.all((await caches.keys()).map((k) => caches.delete(k)));
+      // refresh the browser's HTTP cache too, then load the new version
+      await Promise.all(APP_FILES.map((f) => fetch(f, { cache: 'reload' }).catch(() => {})));
+    } catch { /* reload anyway */ }
+    location.reload();
+  } catch {
+    toast(t('settings.updateFail'));
+  } finally {
+    btn.disabled = false;
+  }
+}
+const APP_FILES = ['./', 'index.html', 'css/style.css', 'js/main.js', 'js/i18n.js', 'js/color.js', 'js/naming.js', 'js/cvd.js',
+  'js/machado.js', 'js/segment.js', 'js/gl.js', 'js/camera.js', 'js/selftest.js', 'js/wb.js', 'js/analysis-worker.js'];
+
+let resetArmed = 0;
+function resetSettings() {
+  const btn = $('btnReset');
+  if (performance.now() - resetArmed > 4000) {
+    // first tap only arms the button, so a stray tap cannot wipe the tuning result
+    resetArmed = performance.now();
+    btn.textContent = t('settings.resetConfirm');
+    btn.classList.add('armed');
+    setTimeout(() => { if (performance.now() - resetArmed >= 3900) { btn.textContent = t('settings.reset'); btn.classList.remove('armed'); } }, 4000);
+    return;
+  }
+  try { localStorage.removeItem(STORE_KEY); } catch { /* ignore */ }
+  location.reload();
 }
 
 // expose a tiny hook for automated tests

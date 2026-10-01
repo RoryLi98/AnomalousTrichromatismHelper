@@ -376,7 +376,32 @@ test('ambiguous colours get a "may also be" category', () => {
   assert.equal(classifyBasic(214, 99, 64), 'orange');
 });
 
-import { guessFacing, lensKind } from '../docs/js/camera.js';
+import { guessFacing, lensKind, ensureFullSensor, frameAspect } from '../docs/js/camera.js';
+
+test('camera: a square or 16:9 stream is switched to a native 4:3 mode when the camera has one', async () => {
+  // a browser that picked a 1:1 mode, matches exact sizes against landscape native modes and
+  // reports portrait settings
+  const mockTrack = (modes, start) => {
+    let cur = start;
+    return {
+      readyState: 'live',
+      getSettings: () => ({ width: cur[1], height: cur[0] }),
+      applyConstraints: async (c) => {
+        const m = modes.find(([w, h]) => w === c.width.exact && h === c.height.exact);
+        if (!m) { const e = new Error('over'); e.name = 'OverconstrainedError'; throw e; }
+        cur = m;
+      },
+    };
+  };
+  const tr = mockTrack([[1440, 1440], [1920, 1080], [1440, 1080], [640, 480]], [1440, 1440]);
+  assert.equal(await ensureFullSensor(tr), true);
+  assert.deepEqual([tr.getSettings().width, tr.getSettings().height], [1080, 1440]);
+  const sq = mockTrack([[1440, 1440], [1920, 1080]], [1440, 1440]);
+  assert.equal(await ensureFullSensor(sq), false, 'no 4:3 mode: keep what we have');
+  assert.deepEqual([sq.getSettings().width, sq.getSettings().height], [1440, 1440]);
+  assert.equal(await ensureFullSensor(mockTrack([[1920, 1440]], [1920, 1440])), true, 'already 4:3: nothing to do');
+  assert.ok(Math.abs(frameAspect(1080, 1440) - 4 / 3) < 1e-9 && frameAspect(0, 10) === 0);
+});
 test('camera labels: facing and lens type (iOS en/zh, Android)', () => {
   const cases = [
     ['Back Camera', 'environment', 'main'], ['Back Ultra Wide Camera', 'environment', 'ultra'],

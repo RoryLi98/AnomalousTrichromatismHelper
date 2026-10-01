@@ -1,5 +1,5 @@
 // Offline cache for the app shell. Bump VERSION when files change.
-const VERSION = 'cvh-v1.3.1';
+const VERSION = 'cvh-v1.3.3';
 const FILES = [
   './', 'index.html', 'manifest.webmanifest', 'css/style.css',
   'js/main.js', 'js/i18n.js', 'js/color.js', 'js/naming.js', 'js/cvd.js', 'js/machado.js',
@@ -18,11 +18,19 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-// Network first (so updates arrive), falling back to the cache when offline.
+// Network first, revalidating the browser's HTTP cache (GitHub Pages lets it keep files for
+// 10 minutes, which used to serve a stale version right after an update), falling back to the
+// offline cache.
+function fresh(req) {
+  if (req.mode === 'navigate') {
+    return fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' }).then((r) => (r.redirected ? fetch(req) : r));
+  }
+  return fetch(new Request(req, { cache: 'no-cache' }));
+}
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
   e.respondWith(
-    fetch(e.request)
+    fresh(e.request)
       .then((res) => {
         if (res.ok) {
           const copy = res.clone();

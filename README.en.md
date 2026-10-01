@@ -8,7 +8,7 @@
 
 [**Open the app →**](https://ruilin.li/AnomalousTrichromatismHelper/) &nbsp;·&nbsp; [中文](README.md)
 
-<a href="https://ruilin.li/AnomalousTrichromatismHelper/"><img src="https://img.shields.io/badge/version-1.3.1-2ea44f" alt="version 1.3.1"></a>
+<a href="https://ruilin.li/AnomalousTrichromatismHelper/"><img src="https://img.shields.io/badge/version-1.3.3-2ea44f" alt="version 1.3.3"></a>
 <img src="https://img.shields.io/badge/PWA-installable-5a0fc8" alt="PWA">
 <img src="https://img.shields.io/badge/correction-real--time_WebGL-d9480f" alt="real-time WebGL correction">
 <img src="https://img.shields.io/badge/platform-Android_%7C_iOS_15%2B-1f6feb" alt="Android / iOS 15+">
@@ -71,7 +71,9 @@ Six original Ishihara-style plates: figure and background differ only along the 
 | tell red from green | Switch to Correct and use “Auto”; if it's not strong enough, raise the strength or pick “Strong” |
 | read a color-plate test | “Strong” at 170–200 %; fill the frame with the plate, light it evenly, avoid glare |
 | fix yellow or blue lighting | Toolbar “WB” → “White card”, point at white paper and tap once |
-| stop the picture looking zoomed in | Toolbar “Lens” → “Whole frame”, or pick another rear camera |
+| stop the picture looking zoomed in or square | Toolbar “Lens” → “Whole frame”, or pick another rear camera; the sheet shows the current resolution and aspect ratio |
+| a lens will not open | The app says why and switches back to the previous lens. Many Android phones expose only some lenses to browsers; reach ultra-wide / tele with 0.5× / 2× on the left (needs hardware-zoom support; on Android, Chrome is recommended) |
+| make sure I have the latest version | Settings → “Check for updates” |
 
 ## How it works
 
@@ -142,6 +144,7 @@ No build step, plain ES modules.
 npm start            # http://localhost:8765 (localhost may use the camera)
 npm test             # unit tests, Node 18+
 npm run test:e2e     # end-to-end: synthetic camera video + Playwright Chromium
+npm run test:e2e:lens  # lens picker: three fake cameras, failed and slow-to-release opens
                      # needs numpy, Pillow, ffmpeg, playwright
 ```
 
@@ -152,12 +155,12 @@ python3 tests/make_photo_scene.py photo.png /tmp/real.y4m
 python3 tests/e2e_real.py /tmp/real.y4m /tmp/shots
 ```
 
-The 26 unit tests cover:
+The 27 unit tests cover:
 
 - CIEDE2000 reference data, color naming and the Machado matrices;
 - separation gains from compensation and Balanced;
 - segmentation under strong shading, texture and thin-gap leaks;
-- auto white balance and lens-label parsing;
+- auto white balance, lens-label parsing and switching to a full 4:3 camera frame;
 - tuner fitting and the two-step flow;
 - Ishihara-style plates.
 
@@ -206,7 +209,7 @@ Pages on a private repository needs GitHub Pro, Team or Enterprise; the Pages si
 - This is an aid, not a diagnosis. It does not replace a clinical color-vision exam (Ishihara, FM-100, anomaloscope). The numbers above come from simulated CVD viewers; real people differ, so trust your own Tune result.
 - Phone cameras change colors with exposure and white balance. Auto white balance can be off when nothing white or gray is in view; use the white card then. Safari on iPhone doesn't let web pages lock the camera's white balance.
 - Balanced and Strong change the lightness and yellow/blue tint of some colors. The aim is to make colors distinguishable, not to show them as they really are.
-- Android usually labels lenses only by number, so they appear as “Rear camera 1 / 2 …”.
+- Android usually labels lenses only by number, so they appear as “Rear camera 1 / 2 …”. Many Android phones expose only some lenses to browsers, so the list can be shorter than the real lens count; browsers such as Firefox do not support hardware zoom or the torch yet.
 
 ## References
 

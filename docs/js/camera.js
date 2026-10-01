@@ -23,6 +23,48 @@ export function lensKind(label) {
   return 'main';
 }
 
+/** Long side / short side of a frame (1 = square, 1.33 = 4:3, 1.78 = 16:9). */
+export function frameAspect(w, h) { return w && h ? Math.max(w, h) / Math.min(w, h) : 0; }
+const isFullSensor = (w, h) => Math.abs(frameAspect(w, h) - 4 / 3) < 0.05;
+
+/** 4:3 sizes to try, landscape (sensor) orientation, largest useful first. */
+// (640×480 would show the whole sensor too, but too blurry on a phone screen)
+export const FULL_SENSOR_SIZES = [[1920, 1440], [1440, 1080], [1600, 1200], [2048, 1536], [1280, 960], [1024, 768], [960, 720]];
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** Our own "a newer start() replaced this one" signal (browsers also throw AbortError for real failures). */
+export function superseded() { const e = new Error('superseded'); e.name = 'SupersededError'; return e; }
+const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
+
+/**
+ * Some browser + phone combinations answer our "about 1920×1440" request with a 1:1 or 16:9
+ * sensor mode (several candidate sizes are equally far from the request, and the browser takes
+ * the first). Those modes crop the sensor, so the view looks square or zoomed in. Ask the running
+ * track for exact 4:3 sizes, without letting the browser crop or scale a non-4:3 mode, until one
+ * is accepted. Returns true when the track ends up 4:3.
+ */
+export async function ensureFullSensor(track, timeoutMs = 2500) {
+  if (!track || !track.applyConstraints) return false;
+  const size = () => { try { const s = track.getSettings(); return [s.width, s.height]; } catch { return [0, 0]; } };
+  if (isFullSensor(...size())) return true;
+  // without resizeMode support we cannot forbid cropping, but browsers lacking it (Firefox,
+  // Safari) only pick native camera modes anyway
+  let noResize = {};
+  try { if (navigator.mediaDevices.getSupportedConstraints().resizeMode) noResize = { resizeMode: { exact: 'none' } }; } catch { /* ignore */ }
+  for (const [w, h] of FULL_SENSOR_SIZES) {
+    for (const [cw, ch] of [[w, h], [h, w]]) {
+      try {
+        await withTimeout(track.applyConstraints({
+          width: { exact: cw }, height: { exact: ch }, frameRate: { ideal: 30 }, ...noResize,
+        }), timeoutMs);
+      } catch { continue; } // not a native size of this camera
+      if (track.readyState === 'ended') return false;
+      if (isFullSensor(...size())) return true;
+    }
+  }
+  return false;
+}
+
 /** Lens types that should not be picked automatically. */
 const AVOID = new Set(['tele', 'macro', 'depth', 'ir', 'ultra']);
 
@@ -68,24 +110,44 @@ export class Camera {
     const g = ++this.gen;
     this.stop();
     const facing = opts.facing || this.facing;
-    const size = { width: { ideal: 1920 }, height: { ideal: 1440 }, frameRate: { ideal: 30 } };
+    // 1440×1080 is a native 4:3 mode on most phones (several modes are equally far from 1920×1440,
+    // and some browsers then take a 1:1 one); resizeMode 'none' keeps Chrome from cropping a 16:9
+    // mode to 4:3. Browsers without resizeMode ignore it.
+    const size = { width: { ideal: 1440 }, height: { ideal: 1080 }, frameRate: { ideal: 30 }, resizeMode: 'none' };
+    // opts.strict: the user picked this camera, so never silently open a different one instead
+    const strict = !!(opts.strict && opts.deviceId);
     const tries = [];
-    if (opts.deviceId) tries.push({ deviceId: { exact: opts.deviceId }, ...size });
-    tries.push({ facingMode: { ideal: facing }, ...size });
-    tries.push(true);
+    if (opts.deviceId) {
+      tries.push({ video: { deviceId: { exact: opts.deviceId }, ...size }, device: true });
+      // some lenses only stream small sizes: retry without the size only when the size was the problem
+      tries.push({ video: { deviceId: { exact: opts.deviceId } }, device: true, onlyAfter: 'OverconstrainedError' });
+    }
+    if (!strict) {
+      tries.push({ video: { facingMode: { ideal: facing }, ...size } });
+      tries.push({ video: true });
+    }
     let stream = null, lastErr = null;
-    for (const video of tries) {
-      try { stream = await navigator.mediaDevices.getUserMedia({ audio: false, video }); break; }
-      catch (err) {
-        lastErr = err;
-        if (!['OverconstrainedError', 'NotFoundError', 'NotReadableError', 'AbortError'].includes(err.name)) throw err;
+    outer:
+    for (const tr of tries) {
+      if (tr.onlyAfter && (!lastErr || lastErr.name !== tr.onlyAfter)) continue;
+      // Android releases the previous camera asynchronously: opening the next one right away often
+      // fails with NotReadableError / AbortError ("could not start video source"), so wait and retry
+      for (let k = 0; k < (tr.device ? 3 : 1); k++) {
+        if (g !== this.gen) throw superseded();
+        try { stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: tr.video }); break outer; }
+        catch (err) {
+          lastErr = err;
+          if (!['OverconstrainedError', 'NotFoundError', 'NotReadableError', 'AbortError'].includes(err.name)) throw err;
+          if (err.name === 'OverconstrainedError' || err.name === 'NotFoundError') break;
+          await sleep(350 + 450 * k);
+        }
       }
     }
     if (!stream) throw lastErr;
     if (g !== this.gen) {
       // a newer start() (or stop()) happened while we were waiting: drop this stream
       stream.getTracks().forEach((t) => t.stop());
-      const e = new Error('superseded'); e.name = 'AbortError'; throw e;
+      throw superseded();
     }
     this.stream = stream;
     this.torchOn = false;
@@ -94,6 +156,11 @@ export class Camera {
     const st = this.settings;
     this.deviceId = st.deviceId || opts.deviceId || null;
     this.label = track ? track.label : '';
+    if (strict && st.deviceId && st.deviceId !== opts.deviceId) {
+      // the browser quietly opened another camera
+      this.stop();
+      const e = new Error('another camera opened'); e.name = 'WrongCameraError'; throw e;
+    }
     this.facing = st.facingMode === 'user' || st.facingMode === 'environment'
       ? st.facingMode : (guessFacing(this.label) || facing);
     if (track) track.addEventListener('ended', () => { if (this.stream === stream && this.onEnded) this.onEnded(); });
@@ -109,6 +176,11 @@ export class Camera {
         setTimeout(done, 3000);
       });
     }
+    // a square or 16:9 mode crops the sensor: switch to a 4:3 mode if the camera has one
+    if (track && !isFullSensor(v.videoWidth, v.videoHeight)) {
+      this.fullSensor = await ensureFullSensor(track).catch(() => false);
+      if (g !== this.gen) throw superseded();
+    } else this.fullSensor = true;
     // start at 1× if the camera supports zoom and opened zoomed in
     const z = this.zoomRange;
     if (z && this.zoom > 1.01 && z.min <= 1) await this.setZoom(1);

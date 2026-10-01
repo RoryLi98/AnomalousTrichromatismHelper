@@ -8,7 +8,7 @@
 
 [**在线打开 →**](https://ruilin.li/AnomalousTrichromatismHelper/) &nbsp;·&nbsp; [English](README.en.md)
 
-<a href="https://ruilin.li/AnomalousTrichromatismHelper/"><img src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-1.3.1-2ea44f" alt="版本 1.3.1"></a>
+<a href="https://ruilin.li/AnomalousTrichromatismHelper/"><img src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-1.3.3-2ea44f" alt="版本 1.3.3"></a>
 <img src="https://img.shields.io/badge/PWA-%E5%8F%AF%E5%AE%89%E8%A3%85%E5%88%B0%E4%B8%BB%E5%B1%8F%E5%B9%95-5a0fc8" alt="PWA">
 <img src="https://img.shields.io/badge/%E7%9F%AB%E6%AD%A3-WebGL_%E5%AE%9E%E6%97%B6-d9480f" alt="WebGL 实时矫正">
 <img src="https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Android_%7C_iOS_15%2B-1f6feb" alt="Android / iOS 15+">
@@ -71,7 +71,9 @@
 | 看清红绿 | 切到“矫正”；方法用“自动”，不够明显就调高强度或换“强力” |
 | 看色盲检查图 | “强力”，强度 170–200%；让图占满画面，光线均匀，避开反光 |
 | 灯光太黄 / 太蓝 | 工具栏“白平衡”→“白纸校准”，准星对准白纸点一下 |
-| 画面像被放大了 | 工具栏“镜头”→ 选“完整画面”，或换一个后置镜头 |
+| 画面像被放大了 / 是正方形 | 工具栏“镜头”→ 选“完整画面”，或换一个后置镜头；面板里会显示当前分辨率和比例 |
+| 换不了某个镜头 | 打不开时会提示原因并切回原来的镜头；很多安卓手机只把部分镜头开放给浏览器，超广角 / 长焦要用左侧的 0.5× / 2×（需要浏览器支持硬件变焦，安卓上推荐 Chrome） |
+| 确认用的是最新版 | 设置 →“检查更新” |
 
 ## 工作原理
 
@@ -142,6 +144,7 @@ GPU 着色器与 CPU 参考实现逐像素对比，误差为 0。
 npm start            # http://localhost:8765（localhost 允许打开摄像头）
 npm test             # 单元测试，Node 18+
 npm run test:e2e     # 端到端测试：合成摄像头视频 + Playwright Chromium
+npm run test:e2e:lens  # 镜头切换：三个虚拟摄像头，模拟打开失败和延迟释放
                      # 需要 numpy、Pillow、ffmpeg、playwright
 ```
 
@@ -152,7 +155,7 @@ python3 tests/make_photo_scene.py 照片.png /tmp/real.y4m
 python3 tests/e2e_real.py /tmp/real.y4m /tmp/shots
 ```
 
-26 项单元测试覆盖：CIEDE2000 参考数据、颜色命名、Machado 矩阵、补偿与平衡的区分度、强阴影 / 纹理 / 细缝漏边、自动白平衡、镜头名称识别、调校拟合与两步流程、Ishihara 式点阵图。
+27 项单元测试覆盖：CIEDE2000 参考数据、颜色命名、Machado 矩阵、补偿与平衡的区分度、强阴影 / 纹理 / 细缝漏边、自动白平衡、镜头名称识别、摄像头自动换到 4:3 全画面、调校拟合与两步流程、Ishihara 式点阵图。
 
 <details>
 <summary><b>项目结构</b></summary>
@@ -199,7 +202,7 @@ assets/                     README 用图
 - 本应用只是辅助工具，不能替代医院的色觉检查（如 Ishihara、FM-100、色觉镜）。上面的效果数据来自色弱模型模拟，真人效果因人而异，请以“调校”的结果为准。
 - 手机摄像头的曝光和白平衡会改变颜色。画面里没有白色或灰色物体时自动白平衡可能不准，这时用白纸校准；iPhone 的 Safari 不允许网页锁定相机白平衡。
 - “平衡”和“强力”会改变部分颜色的明暗和偏黄 / 偏蓝程度，目的是让你分得开，不是还原颜色本来的样子。
-- 安卓的镜头名称通常只是编号，App 只能显示为“后置摄像头 1 / 2 ……”。
+- 安卓的镜头名称通常只是编号，App 只能显示为“后置摄像头 1 / 2 ……”。很多安卓手机只把部分镜头开放给浏览器，所以列表可能比手机实际的镜头少；Firefox 等浏览器还不支持硬件变焦和补光。
 
 ## 参考文献
 

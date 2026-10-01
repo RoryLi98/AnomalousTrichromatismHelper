@@ -1,6 +1,6 @@
 {
   "name": "anomalous-trichromatism-helper",
-  "version": "1.3.1",
+  "version": "1.3.3",
   "private": true,
   "description": "Color Vision Helper (色觉助手): real-time color naming, color-region outlining and CVD correction PWA",
   "type": "module",
@@ -8,7 +8,8 @@
     "start": "python3 -m http.server 8765 --directory docs",
     "test": "node --test tests/unit.test.mjs",
     "test:e2e": "python3 tests/make_scene.py /tmp/scene.y4m && python3 tests/e2e.py /tmp/scene.y4m /tmp/shots",
-    "test:e2e:real": "python3 tests/make_photo_scene.py ${PHOTO:-photo.png} /tmp/real.y4m && python3 tests/e2e_real.py /tmp/real.y4m /tmp/shots"
+    "test:e2e:real": "python3 tests/make_photo_scene.py ${PHOTO:-photo.png} /tmp/real.y4m && python3 tests/e2e_real.py /tmp/real.y4m /tmp/shots",
+    "test:e2e:lens": "python3 tests/e2e_lens.py /tmp/shots"
   },
   "license": "MIT"
 }

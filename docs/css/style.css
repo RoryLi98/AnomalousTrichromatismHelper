@@ -78,7 +78,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--focus); out
 /* ---------- top bar ---------- */
 .topbar {
   position: absolute; z-index: 5; top: 0; left: 0; right: 0;
-  padding: calc(var(--safe-t) + 10px) calc(var(--safe-r) + 12px) 10px calc(var(--safe-l) + 12px);
+  padding: calc(var(--safe-t) + 6px) calc(var(--safe-r) + 10px) 6px calc(var(--safe-l) + 10px);
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   background: linear-gradient(rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0));
 }
@@ -94,7 +94,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--focus); out
 .seg-wide > button { min-width: 0; }
 .seg-tall > button { padding: 9px 8px; text-align: center; white-space: normal; }
 .seg-mini { flex: none; }
-.seg-mini > button { padding: 5px 12px; font-size: 13px; min-height: 34px; }
+.seg-mini > button { padding: 3px 11px; font-size: 12.5px; min-height: 28px; }
 
 .icon-btn, .chip-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 44px; height: 44px;
@@ -138,7 +138,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--focus); out
 .cal-btn { min-height: 46px; font-size: 15px; }
 
 /* card status line (warnings, "may also be called", light colour) */
-.status { font-size: 12.5px; color: var(--text); margin-top: 3px; line-height: 1.35; }
+.status { font-size: 12px; color: var(--text); margin-top: 2px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .status:empty { display: none; }
 .ic-s { width: 15px; height: 15px; vertical-align: -3px; margin-right: 3px; }
 
@@ -154,12 +154,16 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--focus); out
 .cam-item .cam-name { font-weight: 700; font-size: 15px; }
 .cam-item em { font-style: normal; font-size: 11px; font-weight: 800; padding: 1px 6px; border-radius: 6px; border: 1px solid currentColor; margin-left: 4px; }
 .cam-item small { font-size: 11.5px; opacity: 0.75; word-break: break-all; }
+.cam-item.busy { opacity: 0.85; }
+.cam-item.failed { border-style: dashed; }
+.cam-item .cam-fail { opacity: 1; color: #ffb74d; font-weight: 700; }
+.cam-limits { border-left: 3px solid var(--focus); padding-left: 8px; }
 
 /* ---------- bottom stack ---------- */
 .bottom {
   position: absolute; z-index: 5; left: 0; right: 0; bottom: 0;
-  padding: 0 calc(var(--safe-r) + 10px) calc(var(--safe-b) + 8px) calc(var(--safe-l) + 10px);
-  display: flex; flex-direction: column; gap: 8px; pointer-events: none;
+  padding: 0 calc(var(--safe-r) + 8px) calc(var(--safe-b) + 6px) calc(var(--safe-l) + 8px);
+  display: flex; flex-direction: column; gap: 6px; pointer-events: none;
   background: linear-gradient(rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.45) 40%);
 }
 .bottom > * { pointer-events: auto; }
@@ -168,22 +172,23 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--focus); out
   backdrop-filter: blur(18px) saturate(1.2); -webkit-backdrop-filter: blur(18px) saturate(1.2);
 }
 
-#card { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
-.mode-identify #card { min-height: 150px; justify-content: space-between; }
-.card-main { display: flex; align-items: center; gap: 12px; }
-.card-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-#swatch { width: 60px; height: 60px; border-radius: 14px; flex: none; border: 2px solid rgba(255, 255, 255, 0.85); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6); background: #333; }
+/* compact colour card: two rows, no empty space (the camera picture gets the room) */
+#card { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; }
+.card-main { display: flex; align-items: center; gap: 10px; }
+.card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+#swatch { width: 46px; height: 46px; border-radius: 12px; flex: none; border: 2px solid rgba(255, 255, 255, 0.85); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6); background: #333; }
 .card-text { flex: 1; min-width: 0; }
-.name { font-size: 26px; font-weight: 800; letter-spacing: 0.01em; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.alt { font-size: 14px; color: var(--muted); font-weight: 600; line-height: 1.3; margin-top: 2px; }
+.name { font-size: 23px; font-weight: 800; letter-spacing: 0.01em; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.alt { font-size: 13px; color: var(--muted); font-weight: 600; line-height: 1.3; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .alt:empty { display: none; }
-.sub { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; line-height: 1.35; min-width: 0; }
+#card #btnSpeak { min-width: 40px; height: 40px; }
+.sub { flex: 1; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; line-height: 1.3; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sub .hex { color: var(--text); font-weight: 600; text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
 
 .toolbar { display: flex; justify-content: space-between; gap: 6px; }
 .toolbar > button {
-  flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px; min-height: 56px;
-  border-radius: 14px; background: var(--panel); border: 1px solid var(--line); font-size: 12px; font-weight: 600;
+  flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; padding: 5px 4px; min-height: 50px;
+  border-radius: 13px; background: var(--panel); border: 1px solid var(--line); font-size: 12px; font-weight: 600;
   backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
 }
 .toolbar > button.on { background: var(--sel-bg); color: var(--sel-text); }
@@ -252,6 +257,14 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
 .sheet-head { position: sticky; top: 0; background: var(--panel-solid); display: flex; align-items: center; justify-content: space-between; padding: 10px 0; z-index: 1; }
 .sheet-head h2 { margin: 0; font-size: 20px; }
 .srow { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.sgroup { margin: 14px 0 0; font-size: 12px; font-weight: 800; letter-spacing: 0.06em; color: var(--muted); text-transform: uppercase; }
+.srow-btn { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.srow-btn .desc { margin-top: 2px; }
+.srow-title { font-weight: 600; font-size: 14px; }
+.srow-btn .chip-btn { flex: none; padding: 0 14px; font-weight: 700; font-size: 14px; }
+.chip-btn.armed { background: var(--sel-bg); color: var(--sel-text); }
+.fold summary { font-weight: 600; font-size: 14px; cursor: pointer; list-style-position: inside; }
+.fold[open] summary { margin-bottom: 4px; }
 .srow.tog { display: flex; }
 .btn-row { display: flex; gap: 10px; margin-top: 10px; }
 .btn-row > button { flex: 1; white-space: nowrap; }
@@ -288,10 +301,9 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
   .bottom { left: 50%; right: auto; width: 560px; transform: translateX(-50%); padding-left: 0; padding-right: 0; background: none; }
 }
 @media (max-height: 640px) {
-  .name { font-size: 22px; }
-  #card { padding: 8px 10px; gap: 6px; }
-  #swatch { width: 48px; height: 48px; }
-  .toolbar > button { min-height: 48px; padding: 6px 4px; }
+  .name { font-size: 21px; }
+  #swatch { width: 42px; height: 42px; }
+  .toolbar > button { min-height: 46px; padding: 4px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
