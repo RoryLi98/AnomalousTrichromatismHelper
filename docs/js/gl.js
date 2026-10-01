@@ -31,8 +31,7 @@ uniform float uStrength;
 uniform vec3 uEnh;          // axis (0 = red-green lost, 1 = blue-yellow lost), gain, lightness gain
 uniform vec3 uWB;           // white-balance gains (linear)
 uniform float uPreview;     // 1 = show through simulated CVD eyes
-uniform float uSplit;       // screen x (0..1) of compare divider, <0 disables
-uniform float uScreenX;     // for split: 1/width
+uniform float uSplit;       // canvas x (device px) of the compare divider, <0 disables
 
 vec3 toLin(vec3 c) {
   vec3 lo = c / 12.92;
@@ -102,12 +101,12 @@ void main() {
   vec3 srgb = texture2D(uTex, vUv).rgb;
   vec3 lin = min(toLin(srgb) * uWB, vec3(1.0));
   srgb = toSrgb(lin);
-  bool original = uSplit >= 0.0 && gl_FragCoord.x * uScreenX < uSplit;
+  bool original = uSplit >= 0.0 && gl_FragCoord.x < uSplit;
   vec3 outLin = original ? lin : process(srgb, lin);
   if (uPreview > 0.5) outLin = uSim * clamp(outLin, 0.0, 1.0);
   vec3 col = toSrgb(outLin);
   if (uSplit >= 0.0) {
-    float dx = abs(gl_FragCoord.x * uScreenX - uSplit) / uScreenX;
+    float dx = abs(gl_FragCoord.x - uSplit);
     col = mix(col, vec3(1.0), 1.0 - smoothstep(1.0, 2.5, dx));
   }
   gl_FragColor = vec4(col, 1.0);
@@ -192,7 +191,7 @@ export class Renderer {
     gl.enableVertexAttribArray(0);
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
     this.u = {};
-    for (const n of ['uTex', 'uCrop', 'uMirror', 'uMethod', 'uSim', 'uInv', 'uErr', 'uStrength', 'uEnh', 'uWB', 'uPreview', 'uSplit', 'uScreenX']) {
+    for (const n of ['uTex', 'uCrop', 'uMirror', 'uMethod', 'uSim', 'uInv', 'uErr', 'uStrength', 'uEnh', 'uWB', 'uPreview', 'uSplit']) {
       this.u[n] = gl.getUniformLocation(prog, n);
     }
     this.tex = gl.createTexture();
@@ -209,12 +208,16 @@ export class Renderer {
     this.setPreview(false);
   }
 
+  /** Where the picture goes inside the canvas, in CSS-style device px (origin top-left). */
+  setViewport(x, y, w, h) {
+    this.vp = [Math.round(x), Math.round(this.canvas.height - y - h), Math.round(w), Math.round(h)];
+  }
+
   resize(w, h) {
     if (this.canvas.width !== w || this.canvas.height !== h) {
       this.canvas.width = w; this.canvas.height = h;
     }
-    this.gl.viewport(0, 0, w, h);
-    this.gl.uniform1f(this.u.uScreenX, 1 / w);
+    if (!this.vp) this.vp = [0, 0, w, h];
   }
 
   /** Upload a frame from a <video>, <canvas> or <img>. */
@@ -251,7 +254,12 @@ export class Renderer {
   setSplit(x) { this.gl.uniform1f(this.u.uSplit, x); }
 
   draw() {
-    this.gl.drawArrays(this.gl.TRIANGLE_STRIP, 0, 4);
+    const gl = this.gl;
+    gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+    gl.clearColor(0.055, 0.067, 0.086, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.viewport(this.vp[0], this.vp[1], this.vp[2], this.vp[3]);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
 
   /**
@@ -287,7 +295,7 @@ export class Renderer {
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, t.img.data);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+    gl.viewport(this.vp[0], this.vp[1], this.vp[2], this.vp[3]);
     gl.useProgram(this.prog);
     return t.img;
   }

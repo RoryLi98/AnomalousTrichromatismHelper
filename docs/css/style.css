@@ -103,7 +103,49 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--focus); out
   display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 999px;
   background: var(--panel); border: 1px solid var(--line); font-size: 13px; font-weight: 600;
 }
-#zoomBadge { position: absolute; z-index: 5; left: 50%; transform: translateX(-50%); top: calc(var(--safe-t) + 66px); padding: 4px 10px; border-radius: 999px; background: rgba(0,0,0,.6); font-weight: 700; font-size: 13px; }
+#hud { position: absolute; z-index: 6; left: 50%; transform: translateX(-50%); top: calc(var(--safe-t) + 66px); padding: 6px 12px; border-radius: 999px; background: rgba(0,0,0,.7); border: 1px solid var(--line); font-weight: 700; font-size: 14px; pointer-events: none; white-space: nowrap; }
+
+/* zoom chips (like the native camera app) */
+.zoom-chips { position: absolute; z-index: 4; transform: translateX(-50%); display: flex; gap: 6px; padding: 4px; border-radius: 999px; background: rgba(0, 0, 0, 0.45); }
+.zoom-chips button { min-width: 40px; height: 34px; padding: 0 8px; border-radius: 999px; font-size: 13px; font-weight: 800; color: var(--text); background: rgba(255, 255, 255, 0.12); }
+.zoom-chips button.on { background: var(--sel-bg); color: var(--sel-text); }
+
+/* region range slider at the right edge of the picture */
+.range-ctl { position: absolute; z-index: 4; transform: translateY(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px 4px; border-radius: 999px; background: rgba(0, 0, 0, 0.42); border: 1px solid var(--line); }
+.rc-btn { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: rgba(255, 255, 255, 0.1); }
+.rc-btn .ic { width: 18px; height: 18px; }
+.rc-track { position: relative; width: 36px; height: min(22vh, 170px); touch-action: none; cursor: ns-resize; }
+.rc-track::before { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 4px; margin-left: -2px; border-radius: 2px; background: rgba(255, 255, 255, 0.25); }
+.rc-fill { position: absolute; left: 50%; bottom: 0; width: 4px; margin-left: -2px; border-radius: 2px; background: #fff; }
+.rc-knob { position: absolute; left: 50%; width: 22px; height: 22px; margin-left: -11px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px var(--bg), 0 1px 4px rgba(0, 0, 0, 0.6); }
+.rc-label { font-size: 11px; font-weight: 700; color: var(--text); writing-mode: horizontal-tb; }
+.mode-correct.hide-id .range-ctl { display: none; }
+
+/* white-balance popover */
+.pop { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 8px; }
+.pop-head { display: flex; align-items: center; justify-content: space-between; }
+.icon-btn.sm { min-width: 34px; height: 34px; }
+.icon-btn.sm .ic { width: 18px; height: 18px; }
+.pop .desc { margin: 0; }
+.cal-btn { min-height: 46px; font-size: 15px; }
+
+/* card status line (warnings, "may also be called", light colour) */
+.status { font-size: 12.5px; color: var(--text); margin-top: 3px; line-height: 1.35; }
+.status:empty { display: none; }
+.ic-s { width: 15px; height: 15px; vertical-align: -3px; margin-right: 3px; }
+
+/* toolbar badge (white-balance mode) */
+.toolbar > button { position: relative; }
+.badge { position: absolute; top: 4px; right: 4px; font-style: normal; font-size: 9.5px; font-weight: 800; line-height: 1; padding: 2px 4px; border-radius: 6px; background: rgba(255, 255, 255, 0.9); color: var(--bg); }
+.toolbar > button.on .badge { background: var(--bg); color: var(--text); }
+
+/* camera list */
+.cam-list { display: flex; flex-direction: column; gap: 6px; }
+.cam-item { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.05); text-align: left; }
+.cam-item[aria-pressed="true"] { background: var(--sel-bg); color: var(--sel-text); }
+.cam-item .cam-name { font-weight: 700; font-size: 15px; }
+.cam-item em { font-style: normal; font-size: 11px; font-weight: 800; padding: 1px 6px; border-radius: 6px; border: 1px solid currentColor; margin-left: 4px; }
+.cam-item small { font-size: 11.5px; opacity: 0.75; word-break: break-all; }
 
 /* ---------- bottom stack ---------- */
 .bottom {
@@ -119,6 +161,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--focus); out
 }
 
 #card { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
+.mode-identify #card { min-height: 150px; justify-content: space-between; }
 .card-main { display: flex; align-items: center; gap: 12px; }
 .card-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 #swatch { width: 60px; height: 60px; border-radius: 14px; flex: none; border: 2px solid rgba(255, 255, 255, 0.85); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6); background: #333; }
@@ -131,7 +174,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--focus); out
 
 .toolbar { display: flex; justify-content: space-between; gap: 6px; }
 .toolbar > button {
-  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px; min-height: 56px;
+  flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px; min-height: 56px;
   border-radius: 14px; background: var(--panel); border: 1px solid var(--line); font-size: 12px; font-weight: 600;
   backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
 }

@@ -33,6 +33,11 @@
       <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
       <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
       <symbol id="i-test" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v4M12 16.5v4"/><circle cx="8.5" cy="10" r="1.2"/><circle cx="15" cy="9" r="1.2"/><circle cx="10" cy="15" r="1.2"/><circle cx="15.5" cy="14.5" r="1.2"/></symbol>
+      <symbol id="i-lens" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4"/><path d="M12 3.5v4.5M20.5 12H16M12 20.5V16M3.5 12H8"/></symbol>
+      <symbol id="i-wb" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor" stroke="none"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+      <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 3l9.5 17h-19z"/><path d="M12 10v4.5M12 17.5v.5"/></symbol>
       <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.4 0 2-1 2-2 0-1.6-1.6-1.8-1.6-3.2 0-1 .8-1.8 1.9-1.8H17a4 4 0 0 0 4-4C21 6.5 17 3 12 3z"/><circle cx="7.5" cy="11" r="1.3"/><circle cx="10" cy="7" r="1.3"/><circle cx="15" cy="7" r="1.3"/></symbol>
     </defs>
   </svg>
@@ -56,7 +61,14 @@
     </header>
 
     <button id="btnRecenter" class="float-btn" hidden data-i18n-aria="tool.recenter"><svg class="ic"><use href="#i-target"/></svg><span data-i18n="tool.recenter"></span></button>
-    <div id="zoomBadge" hidden>1.0×</div>
+    <div id="hud" hidden></div>
+    <div id="zoomChips" class="zoom-chips" hidden></div>
+    <div id="rangeCtl" class="range-ctl" hidden>
+      <button class="rc-btn" id="rangePlus" data-i18n-aria="range.more"><svg class="ic"><use href="#i-plus"/></svg></button>
+      <div class="rc-track" id="rangeTrack"><div class="rc-fill" id="rangeFill"></div><div class="rc-knob" id="rangeKnob"></div></div>
+      <button class="rc-btn" id="rangeMinus" data-i18n-aria="range.less"><svg class="ic"><use href="#i-minus"/></svg></button>
+      <span class="rc-label" data-i18n="range.label"></span>
+    </div>
 
     <section class="bottom">
       <section id="correctPanel" class="panel" aria-label="correction">
@@ -99,12 +111,27 @@
         </div>
       </section>
 
+      <section id="wbPop" class="panel pop" hidden aria-label="white balance">
+        <div class="pop-head">
+          <b data-i18n="wb.title"></b>
+          <button id="wbClose" class="icon-btn sm" data-i18n-aria="settings.close"><svg class="ic"><use href="#i-close"/></svg></button>
+        </div>
+        <div class="seg seg-wide" id="wbSeg">
+          <button data-wb="auto"><b data-i18n="wb.auto"></b></button>
+          <button data-wb="manual"><b data-i18n="wb.manual"></b></button>
+          <button data-wb="off"><b data-i18n="wb.off"></b></button>
+        </div>
+        <p class="desc" id="wbDesc"></p>
+        <button id="btnWBCal" class="primary cal-btn"><svg class="ic"><use href="#i-target"/></svg><span data-i18n="wb.calibrate"></span></button>
+      </section>
+
       <section id="card" class="panel" aria-live="polite">
         <div class="card-main">
           <div id="swatch"></div>
           <div class="card-text">
             <div id="colorName" class="name" data-i18n="card.waiting"></div>
             <div id="colorAlt" class="alt"></div>
+            <div id="colorStatus" class="status"></div>
           </div>
           <button id="btnSpeak" class="icon-btn" data-i18n-aria="tool.speak"><svg class="ic"><use href="#i-speak"/></svg></button>
         </div>
@@ -120,7 +147,8 @@
       <nav class="toolbar">
         <button id="btnFreeze"><svg class="ic"><use href="#i-pause"/></svg><span data-i18n="tool.freeze"></span></button>
         <button id="btnPhoto"><svg class="ic"><use href="#i-image"/></svg><span data-i18n="tool.photo"></span></button>
-        <button id="btnFlip"><svg class="ic"><use href="#i-flip"/></svg><span data-i18n="tool.flip"></span></button>
+        <button id="btnLens"><svg class="ic"><use href="#i-lens"/></svg><span data-i18n="tool.lens"></span></button>
+        <button id="btnWBTool"><svg class="ic"><use href="#i-wb"/></svg><span data-i18n="tool.wb"></span><i class="badge" id="wbBadge"></i></button>
         <button id="btnTorch" disabled><svg class="ic"><use href="#i-torch"/></svg><span data-i18n="tool.torch"></span></button>
       </nav>
     </section>
@@ -163,24 +191,39 @@
         <label class="tog srow"><input type="checkbox" id="optBilingual"><span data-i18n="settings.bilingual"></span></label>
         <label class="tog srow"><input type="checkbox" id="optOutline" checked><span data-i18n="settings.outline"></span></label>
         <label class="tog srow"><input type="checkbox" id="optDim"><span data-i18n="settings.dim"></span></label>
-        <div class="srow">
-          <div class="label"><span data-i18n="settings.tolerance"></span></div>
-          <div class="range-ends"><small data-i18n="settings.tolerance.tight"></small><input type="range" id="tolerance" min="3" max="16" step="1" value="8"><small data-i18n="settings.tolerance.loose"></small></div>
-        </div>
         <label class="tog srow"><input type="checkbox" id="optValues" checked><span data-i18n="settings.values"></span></label>
         <label class="tog srow"><input type="checkbox" id="optAutoSpeak"><span data-i18n="settings.autospeak"></span></label>
         <div class="srow">
-          <div class="label"><span data-i18n="settings.wb"></span> · <span id="wbState"></span></div>
-          <p class="desc" data-i18n="settings.wbHelp"></p>
-          <div class="btn-row">
-            <button id="btnWB" class="secondary small" data-i18n="settings.wbCalibrate"></button>
-            <button id="btnWBReset" class="secondary small" data-i18n="settings.wbReset"></button>
-          </div>
+          <div class="label" data-i18n="settings.tips"></div>
+          <p class="desc" data-i18n="settings.tipsText"></p>
         </div>
         <div class="srow">
           <div class="label" data-i18n="settings.about"></div>
           <p class="desc" data-i18n="about.text"></p>
-          <p class="desc version">v1.0.0 · <a href="https://ruilin.li/AnomalousTrichromatismHelper/" target="_blank" rel="noopener">ruilin.li</a></p>
+          <p class="desc version">v1.1.0 · <a href="https://ruilin.li/AnomalousTrichromatismHelper/" target="_blank" rel="noopener">ruilin.li</a></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- camera / lens picker -->
+    <section id="camSheet" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="camTitle">
+      <div class="sheet-inner">
+        <div class="sheet-head">
+          <h2 id="camTitle" data-i18n="cam.title"></h2>
+          <button id="btnCamClose" class="chip-btn" data-i18n="settings.close"></button>
+        </div>
+        <div class="srow">
+          <div class="label" data-i18n="cam.choose"></div>
+          <div id="camList" class="cam-list"></div>
+          <p class="desc" id="camInfo"></p>
+        </div>
+        <div class="srow">
+          <div class="label" data-i18n="cam.frame"></div>
+          <div class="seg seg-wide seg-tall" id="frameSeg">
+            <button data-frame="fit"><b data-i18n="cam.fit"></b><small data-i18n="cam.fit.sub"></small></button>
+            <button data-frame="fill"><b data-i18n="cam.fill"></b><small data-i18n="cam.fill.sub"></small></button>
+          </div>
+          <p class="desc" data-i18n="cam.hint"></p>
         </div>
       </div>
     </section>

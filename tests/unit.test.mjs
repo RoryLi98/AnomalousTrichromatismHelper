@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { rgbToLab, deltaE2000, hexToRgb, rgbToOklch } from '../docs/js/color.js';
-import { classifyBasic, nameColor, DETAILED, describe } from '../docs/js/naming.js';
+import { classifyBasic, nameColor, DETAILED, describe, basicAlternative } from '../docs/js/naming.js';
 import { machadoMatrix, mat3Inverse, mat3MulVec, shaderParams, processColor, simulateColor } from '../docs/js/cvd.js';
 
 test('CIEDE2000 matches Sharma et al. reference pairs', () => {
@@ -137,11 +137,11 @@ function synthImage(w, h, fn) {
 test('segmentation: region growing finds a noisy disc and its contour', () => {
   const img = synthImage(120, 120, (x, y) => (Math.hypot(x - 60, y - 60) < 30 ? [200, 30, 40] : [180, 175, 165]));
   const s = new Segmenter();
-  const res = s.run(img, 60, 60, 0.08, null, false);
+  const res = s.run(img, 60, 60, { temporal: false });
   const expect = (Math.PI * 30 * 30) / (120 * 120);
   assert.ok(Math.abs(res.area - expect) < 0.03, `area ${res.area.toFixed(3)} vs ${expect.toFixed(3)}`);
   assert.ok(res.segCount > 100, `segments ${res.segCount}`);
-  const bg = s.run(img, 5, 5, 0.08, null, false);
+  const bg = s.run(img, 5, 5, { temporal: false });
   assert.ok(Math.abs(bg.area - (1 - expect)) < 0.03, `bg area ${bg.area.toFixed(3)}`);
 });
 
@@ -154,7 +154,7 @@ test('segmentation: shading on one object stays in one region; small holes are f
     const k = 1 - 0.35 * (x / 120);
     return [210 * k, 35 * k, 45 * k];
   });
-  const res = new Segmenter().run(img, 70, 62, 0.08, null, false);
+  const res = new Segmenter().run(img, 70, 62, { temporal: false });
   const expect = (Math.PI * 32 * 32) / (120 * 120);
   assert.ok(Math.abs(res.area - expect) < 0.03, `area ${res.area.toFixed(3)} vs ${expect.toFixed(3)}`);
 });
@@ -191,5 +191,103 @@ test('self-test: joint fit recovers type and severity of model observers', () =>
     const fit = fitObserver(thresholdsFor(type, sev));
     assert.equal(fit.type, type, `${type} ${sev} -> ${fit.type}`);
     assert.ok(Math.abs(fit.severity - sev) <= 0.15, `${type} ${sev} -> ${fit.severity}`);
+  }
+});
+
+import { estimateWB, gainsFromReference, castOfGains } from '../docs/js/wb.js';
+
+test('segmentation: strong shading (3× darker side) stays one object', () => {
+  // green ball lit from the left: linear intensity falls from 1 to 0.33 across it
+  const img = synthImage(140, 140, (x, y) => {
+    if (Math.hypot(x - 70, y - 70) >= 40) return [205, 200, 192];
+    const k = 1 - 0.67 * ((x - 30) / 80);
+    const lin = [0.05, 0.35, 0.08].map((v) => v * k);
+    return lin.map((v) => Math.round((v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055) * 255));
+  });
+  const res = new Segmenter().run(img, 50, 70, { temporal: false });
+  const expect = (Math.PI * 40 * 40) / (140 * 140);
+  assert.ok(Math.abs(res.area - expect) < 0.03, `area ${res.area.toFixed(3)} vs ${expect.toFixed(3)}`);
+  assert.equal(nameColor(...res.color.rgb).basicKey, 'green');
+});
+
+test('segmentation: does not leak through a thin contact into a look-alike neighbour', () => {
+  // red disc touching an orange-brown table area along a 2-px bridge
+  const img = synthImage(160, 120, (x, y) => {
+    const inDisc = Math.hypot(x - 50, y - 60) < 30;
+    const bridge = x >= 80 && x < 100 && Math.abs(y - 60) <= 1;
+    if (inDisc || bridge) return [170, 40, 25];
+    if (x >= 100) return [190, 110, 60];
+    return [60, 60, 66];
+  });
+  const res = new Segmenter().run(img, 50, 60, { temporal: false });
+  const disc = (Math.PI * 30 * 30) / (160 * 120);
+  assert.ok(res.area < disc + 0.02, `leaked: area ${res.area.toFixed(3)} vs disc ${disc.toFixed(3)}`);
+});
+
+test('segmentation: textured surface (fabric noise) is not fragmented', () => {
+  let seed = 3;
+  const rnd = () => ((seed = (seed * 48271) % 2147483647) / 2147483647);
+  const img = synthImage(120, 120, (x, y) => {
+    if (x < 20 || x >= 100 || y < 20 || y >= 100) return [230, 228, 220];
+    const k = 0.7 + 0.6 * rnd(); // strong per-pixel texture
+    return [40 * k, 70 * k, 150 * k];
+  });
+  const res = new Segmenter().run(img, 60, 60, { temporal: false });
+  assert.ok(Math.abs(res.area - 0.444) < 0.05, `area ${res.area.toFixed(3)}`);
+  assert.equal(nameColor(...res.color.rgb).basicKey, 'blue');
+});
+
+test('auto white balance: removes a warm cast using gray pixels, ignores the measured object', () => {
+  const cast = [1.0, 0.82, 0.58]; // tungsten-like light, linear
+  const toS = (v) => Math.round((v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055) * 255);
+  const w = 200, h = 150, data = new Uint8ClampedArray(w * h * 4), excl = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x;
+    let lin;
+    if (x < 80) lin = [0.6, 0.6, 0.6];                    // white wall
+    else if (x < 120) lin = [0.18, 0.18, 0.18];           // gray floor
+    else { lin = [0.5, 0.25, 0.05]; excl[i] = 1; }        // orange object being measured
+    const c = lin.map((v, k) => toS(Math.min(1, v * cast[k])));
+    data.set([c[0], c[1], c[2], 255], i * 4);
+  }
+  const est = estimateWB(data, w, h, excl);
+  assert.ok(est.ok);
+  assert.equal(est.cast, 'warm');
+  // corrected wall should be close to neutral: residual ratio within ~12% (80 % strength)
+  const wall = [0.6, 0.6, 0.6].map((v, k) => v * cast[k] * est.gains[k]);
+  assert.ok(Math.max(...wall) / Math.min(...wall) < 1.15, wall.map((v) => v.toFixed(3)).join(','));
+  assert.equal(castOfGains(est.gains), 'warm');
+  // a white-card reference gives exact neutral
+  const g = gainsFromReference([0.6, 0.492, 0.348]);
+  const c = [0.6, 0.492, 0.348].map((v, k) => v * g[k]);
+  assert.ok(Math.max(...c) - Math.min(...c) < 1e-6);
+});
+
+test('auto white balance: no gray pixels -> no estimate', () => {
+  const w = 100, h = 100, data = new Uint8ClampedArray(w * h * 4);
+  for (let i = 0; i < w * h; i++) data.set([220, 60, 30, 255], i * 4);
+  assert.equal(estimateWB(data, w, h).ok, false);
+});
+
+test('ambiguous colours get a "may also be" category', () => {
+  assert.equal(basicAlternative(214, 99, 64), 'red');      // burnt orange (a NASA suit in the shade)
+  assert.equal(basicAlternative(255, 0, 0), null);         // pure red is unambiguous
+  assert.equal(basicAlternative(0, 0, 255), null);
+  assert.equal(classifyBasic(214, 99, 64), 'orange');
+});
+
+import { guessFacing, lensKind } from '../docs/js/camera.js';
+test('camera labels: facing and lens type (iOS en/zh, Android)', () => {
+  const cases = [
+    ['Back Camera', 'environment', 'main'], ['Back Ultra Wide Camera', 'environment', 'ultra'],
+    ['Back Telephoto Camera', 'environment', 'tele'], ['Back Dual Wide Camera', 'environment', 'multi'],
+    ['Back Triple Camera', 'environment', 'multi'], ['Front Camera', 'user', 'main'],
+    ['后置相机', 'environment', 'main'], ['后置超广角相机', 'environment', 'ultra'], ['后置长焦相机', 'environment', 'tele'],
+    ['后置双广角相机', 'environment', 'multi'], ['前置相机', 'user', 'main'],
+    ['camera2 0, facing back', 'environment', 'main'], ['camera2 1, facing front', 'user', 'main'],
+  ];
+  for (const [label, facing, kind] of cases) {
+    assert.equal(guessFacing(label), facing, label);
+    assert.equal(lensKind(label), kind, label);
   }
 });

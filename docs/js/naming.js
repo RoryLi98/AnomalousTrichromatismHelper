@@ -30,12 +30,12 @@ const inRange = (h, a, b) => (a <= b ? h >= a && h < b : h >= a || h < b);
 export function classifyBasicLch({ L, C, h }) {
   if (L < 0.17 || (L < 0.3 && C < 0.06)) return 'black';
   if (C < achromaticLimit(L)) {
-    if (L >= 0.89) return 'white';
+    if (L >= 0.84) return 'white'; // camera exposure rarely renders white paper above L≈0.9
     if (L <= 0.26) return 'black';
     return 'gray';
   }
   // Reddish (rose .. red)
-  if (inRange(h, 340, 40)) {
+  if (inRange(h, 340, 36)) {
     if (L > 0.7) return 'pink';
     if (L > 0.66 && inRange(h, 340, 15)) return 'pink';
     if (inRange(h, 340, 5) && C > 0.18 && L > 0.6) return 'pink';
@@ -43,8 +43,9 @@ export function classifyBasicLch({ L, C, h }) {
     if (C < 0.08 && L < 0.72) return 'brown';
     return 'red';
   }
-  if (inRange(h, 40, 80)) {
-    if (L < 0.66 || (C < 0.09 && L < 0.85)) return 'brown';
+  if (inRange(h, 36, 80)) {
+    // brown = dark and/or muted orange; a dark but strongly coloured orange stays orange
+    if (L < 0.58 || (L < 0.68 && C < 0.13) || (C < 0.09 && L < 0.85)) return 'brown';
     return 'orange';
   }
   if (inRange(h, 80, 100)) {
@@ -65,6 +66,28 @@ export function classifyBasicLch({ L, C, h }) {
 
 export function classifyBasic(r, g, b) {
   return classifyBasicLch(rgbToOklch(r, g, b));
+}
+
+/**
+ * Colours near a category boundary (orange/red, brown/orange, gray/blue …) are named
+ * differently by different people and flip under small lighting changes. Perturb the colour
+ * slightly (hue ±5°, lightness ±0.05, chroma ×0.75/×1.3) and report the most frequent other
+ * category if it wins at least 2 of the 10 perturbations.
+ * @returns {string|null} key of BASIC
+ */
+export function basicAlternative(r, g, b) {
+  const base = rgbToOklch(r, g, b);
+  const main = classifyBasicLch(base);
+  const P = [[5, 0, 1], [-5, 0, 1], [0, 0.05, 1], [0, -0.05, 1], [0, 0, 0.75], [0, 0, 1.3],
+    [5, -0.05, 1], [-5, 0.05, 1], [5, 0, 0.75], [-5, 0, 1.3]];
+  const votes = {};
+  for (const [dh, dl, kc] of P) {
+    const k = classifyBasicLch({ L: Math.max(0, Math.min(1, base.L + dl)), C: base.C * kc, h: (base.h + dh + 360) % 360 });
+    if (k !== main) votes[k] = (votes[k] || 0) + 1;
+  }
+  let best = null, n = 0;
+  for (const [k, v] of Object.entries(votes)) if (v > n) { best = k; n = v; }
+  return n >= 2 ? best : null;
 }
 
 // ---------- systematic description ----------
@@ -149,7 +172,7 @@ export function describe(r, g, b) {
   // Neutrals (optionally tinted: "bluish gray")
   if (L < 0.17 || C < achromaticLimit(L)) {
     let zh, en;
-    if (L >= 0.89) { zh = '白'; en = 'white'; }
+    if (L >= 0.84) { zh = '白'; en = 'white'; }
     else if (L >= 0.75) { zh = '浅灰'; en = 'light gray'; }
     else if (L >= 0.5) { zh = '灰'; en = 'gray'; }
     else if (L >= 0.28) { zh = '深灰'; en = 'dark gray'; }
@@ -386,9 +409,12 @@ export function nearestDetailed(r, g, b) {
 export function nameColor(r, g, b) {
   const basicKey = classifyBasic(r, g, b);
   const near = nearestDetailed(r, g, b);
+  const alt = basicAlternative(r, g, b);
   return {
     basicKey,
     basic: BASIC[basicKey],
+    alt: alt ? BASIC[alt] : null,
+    altKey: alt,
     detailed: near.entry,
     dE: near.dE,
     desc: describe(r, g, b),
