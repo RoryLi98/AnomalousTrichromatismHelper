@@ -37,6 +37,21 @@ function medianOf(arr, n) {
   return n ? a[n >> 1] : 0;
 }
 
+// ---- the region-size slider (0..1) → tolerance multiplier "sens" ----
+// Geometric in both halves, so each step changes the tolerance by the same factor and small
+// regions get as much of the track as large ones. The middle (the default) is 0.224, which was
+// the value at 20 % of the v1.2–v1.3 slider: users found the old middle (0.61) too loose.
+export const SENS_MIN = 0.1, SENS_MID = 0.224, SENS_MAX = 2.0;
+export function rangeToSens(p) {
+  p = Math.max(0, Math.min(1, p));
+  return p <= 0.5 ? SENS_MIN * (SENS_MID / SENS_MIN) ** (p / 0.5) : SENS_MID * (SENS_MAX / SENS_MID) ** ((p - 0.5) / 0.5);
+}
+export function sensToRange(v) {
+  v = Math.max(SENS_MIN, Math.min(SENS_MAX, v));
+  return v <= SENS_MID ? 0.5 * Math.log(v / SENS_MIN) / Math.log(SENS_MID / SENS_MIN)
+    : 0.5 + 0.5 * Math.log(v / SENS_MID) / Math.log(SENS_MAX / SENS_MID);
+}
+
 export class Segmenter {
   constructor() {
     this.w = 0; this.h = 0;

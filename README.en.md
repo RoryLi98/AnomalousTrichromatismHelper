@@ -8,7 +8,7 @@
 
 [**Open the app →**](https://ruilin.li/AnomalousTrichromatismHelper/) &nbsp;·&nbsp; [中文](README.md)
 
-<a href="https://ruilin.li/AnomalousTrichromatismHelper/"><img src="https://img.shields.io/badge/version-1.3.3-2ea44f" alt="version 1.3.3"></a>
+<a href="https://ruilin.li/AnomalousTrichromatismHelper/"><img src="https://img.shields.io/badge/version-1.3.5-2ea44f" alt="version 1.3.5"></a>
 <img src="https://img.shields.io/badge/PWA-installable-5a0fc8" alt="PWA">
 <img src="https://img.shields.io/badge/correction-real--time_WebGL-d9480f" alt="real-time WebGL correction">
 <img src="https://img.shields.io/badge/platform-Android_%7C_iOS_15%2B-1f6feb" alt="Android / iOS 15+">
@@ -26,7 +26,7 @@
 
 ## What it does
 
-- **Identify**: a small crosshair sits in the middle of the screen. Whatever it points at gets a color name, and the whole region of that color is outlined. Shadows, highlights and fabric texture don't break an object apart, and the region doesn't leak through thin gaps into similar colors next to it.
+- **Identify**: a reticle sits in the middle of the screen (5 styles and 3 sizes; the default leaves the centre open so it does not hide what you aim at). Whatever it points at gets a color name, and the whole region of that color is outlined. Shadows, highlights and fabric texture don't break an object apart, and the region doesn't leak through thin gaps into similar colors next to it.
 - **Two color sets**: 12 basic colors (red, orange, yellow, green…), or 150+ detailed names such as “Brick red” and “Olive green”, plus a systematic description like “dark yellow-green”. Colors between two categories get a “may also be called…” hint.
 - **Real-time correction**: every pixel of the camera feed is processed on the GPU, turning the red–green differences you can't see into lightness and blue–yellow differences you can. Choose protan, deutan or tritan and a severity of 0–100 %, with a split-screen comparison.
 - **Tune**: a two-step test of about two minutes. It measures your type and severity, then blind-tests the correction with patterns below your own threshold and strengthens it if they are still not clear.
@@ -67,7 +67,8 @@ Six original Ishihara-style plates: figure and background differ only along the 
 | I want to… | Do this |
 | --- | --- |
 | know what color something is | In Identify, point the reticle at it; tap anywhere to move the reticle, double-tap to recenter |
-| change how much gets outlined | Move the “Range” slider on the right down (similar colors merged) or up (a shaded or glossy object not fully covered); swiping up and down on the picture works too |
+| change how much gets outlined | Move the slider on the right toward “Less” (similar colors merged) or “More” (a shaded or glossy object not fully covered); swiping up and down on the picture works too |
+| stop the reticle hiding things | Settings → “Reticle”: open cross, ring, brackets, dot or crosshair, in three sizes |
 | tell red from green | Switch to Correct and use “Auto”; if it's not strong enough, raise the strength or pick “Strong” |
 | read a color-plate test | “Strong” at 170–200 %; fill the frame with the plate, light it evenly, avoid glare |
 | fix yellow or blue lighting | Toolbar “WB” → “White card”, point at white paper and tap once |
@@ -96,7 +97,7 @@ flowchart LR
   1. downsample to about 80k pixels and apply a 5×5 box filter;
   2. use shading-invariant chromaticity (a/L, b/L): a shadow scales linear RGB, which leaves the ratio unchanged;
   3. split the color difference into a hue direction (strict) and a saturation direction (loose), plus a log-lightness ratio;
-  4. widen the tolerance by the robust spread of the texture around the reticle, then multiply by the Range factor k = 0.15 + 1.85·p²;
+  4. widen the tolerance by the robust spread of the texture around the reticle, then multiply by the slider factor k: 0.1→0.224 over the lower half and 0.224→2.0 over the upper half, both geometric, with the default in the middle (k = 0.224);
   5. hysteresis growth: close “core” pixels spread freely, edge pixels reach at most 4 pixels, so regions don't leak through thin contacts;
   6. opening, keep the connected component, closing and hole filling, then Marching Squares for a sub-pixel outline;
   7. region color: drop the darkest 15 % and brightest 10 %, take the median chroma and the 60th-percentile lightness.
@@ -185,6 +186,7 @@ docs/                       site root (served by GitHub Pages)
     ├── wb.js               auto white balance
     ├── analysis-worker.js  background analysis thread
     ├── camera.js           lens / zoom / torch / WB lock
+    ├── reticle.js          reticle styles
     ├── selftest.js         color-vision tuning
     └── i18n.js             Chinese and English strings
 tests/                      unit and end-to-end tests

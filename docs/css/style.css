@@ -42,29 +42,28 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--focus); out
 
 /* ---------- reticle ---------- */
 #reticle {
-  position: absolute; z-index: 3; width: 44px; height: 44px; margin: -22px 0 0 -22px;
-  left: 50%; top: 50%; pointer-events: none;
+  position: absolute; z-index: 3; width: 0; height: 0; left: 50%; top: 50%; pointer-events: none;
 }
-#reticle::before, #reticle::after {
-  content: ""; position: absolute; left: 50%; top: 50%; background: #fff;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.75);
-}
-#reticle::before { width: 2px; height: 44px; margin: -22px 0 0 -1px;
-  -webkit-mask: linear-gradient(#000 0 15px, transparent 15px 29px, #000 29px); mask: linear-gradient(#000 0 15px, transparent 15px 29px, #000 29px); }
-#reticle::after { width: 44px; height: 2px; margin: -1px 0 0 -22px;
-  -webkit-mask: linear-gradient(90deg, #000 0 15px, transparent 15px 29px, #000 29px); mask: linear-gradient(90deg, #000 0 15px, transparent 15px 29px, #000 29px); }
+#reticle .ret-svg { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); overflow: visible; }
+.ret-svg g { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.ret-svg .halo { stroke: rgba(0, 0, 0, 0.6); stroke-width: 3.6px; }
+.ret-svg .line { stroke: #fff; stroke-width: 1.6px; }
+.ret-svg path, .ret-svg circle { vector-effect: non-scaling-stroke; }
+.ret-svg .halo .fill { fill: rgba(0, 0, 0, 0.6); }
+.ret-svg .line .fill { fill: #fff; }
 #reticle .ring {
-  position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px;
-  border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.75), inset 0 0 0 1px rgba(0, 0, 0, 0.75);
+  display: none; position: absolute; left: 0; top: 0; width: 34px; height: 34px; margin: -17px 0 0 -17px;
+  border-radius: 50%; border: 2.5px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.75), inset 0 0 0 1px rgba(0, 0, 0, 0.75);
 }
 .mode-correct #reticle, .mode-correct #btnRecenter { display: none !important; }
-#reticle .tip { display: none; position: absolute; left: 50%; bottom: 46px; transform: translateX(-50%); white-space: nowrap;
+#reticle .tip { display: none; position: absolute; left: 0; bottom: 26px; transform: translateX(-50%); white-space: nowrap;
   padding: 4px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 700; background: rgba(0, 0, 0, 0.7); border: 1px solid var(--line); }
 
 /* white-balance view: no colour ID, just the target for the white card */
 .wb-open #card, .wb-open .range-ctl, .wb-open #correctPanel, .wb-open #btnRecenter, .wb-open #splitLabels { display: none !important; }
 .wb-open #reticle { display: block !important; }
-.wb-open.wb-manual #reticle .ring { width: 34px; height: 34px; margin: -17px 0 0 -17px; border-width: 2.5px; }
+.wb-open.wb-manual #reticle .ring { display: block; }
+.wb-open.wb-manual #retShape { display: none; }
 .wb-open.wb-manual #reticle .tip { display: block; }
 
 #splitLabels { position: absolute; z-index: 3; top: calc(var(--safe-t) + 64px); left: 0; right: 0; pointer-events: none; }
@@ -119,14 +118,14 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--focus); out
 .zoom-chips button.on { background: var(--sel-bg); color: var(--sel-text); }
 
 /* region range slider at the right edge of the picture */
-.range-ctl { position: absolute; z-index: 4; transform: translateY(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px 4px; border-radius: 999px; background: rgba(0, 0, 0, 0.42); border: 1px solid var(--line); }
-.rc-btn { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: rgba(255, 255, 255, 0.1); }
-.rc-btn .ic { width: 18px; height: 18px; }
-.rc-track { position: relative; width: 36px; height: min(22vh, 170px); touch-action: none; cursor: ns-resize; }
-.rc-track::before { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 4px; margin-left: -2px; border-radius: 2px; background: rgba(255, 255, 255, 0.25); }
-.rc-fill { position: absolute; left: 50%; bottom: 0; width: 4px; margin-left: -2px; border-radius: 2px; background: #fff; }
-.rc-knob { position: absolute; left: 50%; width: 22px; height: 22px; margin-left: -11px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px var(--bg), 0 1px 4px rgba(0, 0, 0, 0.6); }
-.rc-label { font-size: 11px; font-weight: 700; color: var(--text); writing-mode: horizontal-tb; }
+.range-ctl { position: absolute; z-index: 4; transform: translateY(-50%); display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 3px 0; width: 32px; border-radius: 999px; background: rgba(0, 0, 0, 0.32); }
+.rc-btn { width: 32px; min-height: 32px; padding: 2px 0; border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; }
+.rc-btn span { font-size: 10.5px; font-weight: 800; line-height: 1.1; text-shadow: 0 0 3px rgba(0, 0, 0, 0.8); }
+.rc-btn .ic { width: 20px; height: 20px; stroke-width: 1.8; }
+.rc-track { position: relative; width: 32px; height: min(20vh, 150px); touch-action: none; cursor: ns-resize; }
+.rc-track::before { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; margin-left: -1px; border-radius: 1px; background: rgba(255, 255, 255, 0.3); }
+.rc-fill { position: absolute; left: 50%; bottom: 0; width: 2px; margin-left: -1px; border-radius: 1px; background: #fff; }
+.rc-knob { position: absolute; left: 50%; width: 16px; height: 16px; margin-left: -8px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.6); }
 .mode-correct .range-ctl { display: none !important; }
 
 /* white-balance popover */
@@ -311,3 +310,11 @@ input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius
 .verify-note { white-space: pre-line; text-align: left; background: rgba(255, 255, 255, 0.06); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: 14px; line-height: 1.55; margin: 8px 0; }
 .verify-note.bad { border-color: rgba(255, 183, 77, 0.7); }
 #btnTest.attn { border-color: var(--focus); color: var(--focus); }
+
+/* reticle picker (settings) */
+.ret-pick { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.ret-pick button { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 2px 6px; border-radius: 12px; border: 1px solid var(--line); background: #39414d; font-size: 11.5px; font-weight: 600; color: var(--text); }
+.ret-pick button .ret-svg { width: 34px; height: 34px; }
+.ret-pick button[aria-selected="true"] { outline: 2px solid var(--sel-bg); outline-offset: 1px; }
+.ret-size { margin-top: 8px; }
+.ret-size > button { min-height: 34px; }

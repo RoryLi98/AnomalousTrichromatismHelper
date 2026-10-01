@@ -3,13 +3,14 @@ import { t, setLang, getLang, applyI18n, detectLang } from './i18n.js';
 import { LIN, linearToSrgb, rgbToHex, rgbToLab, deltaE2000 } from './color.js';
 import { nameColor, BASIC } from './naming.js';
 import { shaderParams, resolveMethod } from './cvd.js';
-import { Segmenter } from './segment.js';
+import { Segmenter, rangeToSens, sensToRange } from './segment.js';
 import { estimateWB, gainsFromReference, castOfGains } from './wb.js';
 import { Renderer } from './gl.js';
 import { Camera, cameraErrorKey, guessFacing, lensKind, frameAspect } from './camera.js';
 import { SelfTest } from './selftest.js';
+import { reticleSVG, RETICLE_STYLES } from './reticle.js';
 
-export const APP_VERSION = '1.3.3';
+export const APP_VERSION = '1.3.5';
 const $ = (id) => document.getElementById(id);
 const app = $('app'), video = $('video'), overlay = $('overlay');
 let view = $('view');
@@ -22,6 +23,7 @@ const DEFAULTS = {
   values: true, autoSpeak: false, mode: 'identify',
   wbMode: 'auto', wb: [1, 1, 1], wbLocked: false, wbCalibrated: false, // white balance: auto | manual | off
   segPos: 0.5,                                     // region range slider position (0..1, non-linear)
+  reticle: 'gap', retSize: 'm',                    // reticle style / size (see reticle.js)
   frame: 'fit',                                    // fit = whole camera frame, fill = crop to screen
   camId: null, camFacing: 'environment', autoMainDone: false, tipsShown: false,
   cvd: { type: 'deutan', severity: 60, method: 'auto', strength: 100, tuned: false },
@@ -468,12 +470,8 @@ function updateCard() {
   else if (p && p.Y < 0.012) st.push(WARN_SVG + esc(t('warn.dark')));
   if (naming.alt) st.push(esc(t('card.maybe', { x: naming.alt[lang] })));
   $('colorStatus').innerHTML = st.join(' · ');
-  // one line: values, then where the colour came from (the light colour lives in the WB panel)
-  const sub = [];
-  if (S.values) sub.push(`<span class="hex" data-hex="${hex}">${hex}</span>`, `RGB ${rgb.join(',')}`);
-  if (R.colorSrc === 'region' && R.lastRes && R.lastRes.area > 0) sub.push(esc(t('card.area', { p: Math.max(1, Math.round(R.lastRes.area * 100)) })));
-  else sub.push(esc(t('card.fromPoint')));
-  $('colorSub').innerHTML = sub.join(' · ');
+  // one line with the values only
+  $('colorSub').innerHTML = S.values ? `<span class="hex" data-hex="${hex}">${hex}</span> · RGB ${rgb.join(', ')}` : '';
 }
 
 function speakText(text) {
@@ -753,26 +751,33 @@ async function setZoom(v) {
 }
 
 let hudTimer = 0;
-function showHud(text) {
+function showHud(text, ms = text.length > 8 ? 2200 : 1100) {
   const h = $('hud');
   h.textContent = text; h.hidden = false;
   clearTimeout(hudTimer);
-  hudTimer = setTimeout(() => { h.hidden = true; }, 1100);
+  hudTimer = setTimeout(() => { h.hidden = true; }, ms);
 }
 
 // ---------------- region range control ----------------
-// The slider is deliberately non-linear: tolerance = 0.15 + 1.85·p², so the lower half of the
-// track (fine separation of similar colours) covers 0.15–0.61 and the default (middle) is ≈0.6.
-const SENS_MIN = 0.15, SENS_SPAN = 1.85;
-function posToSens(p) { p = Math.max(0, Math.min(1, p)); return SENS_MIN + SENS_SPAN * p * p; }
-function sensToPos(v) { return Math.sqrt(Math.max(0, Math.min(1, (v - SENS_MIN) / SENS_SPAN))); }
+// The slider is non-linear (geometric): the lower half covers tolerance 0.1–0.224, the upper half
+// 0.224–2.0, and the default (middle) is 0.224.
+const posToSens = rangeToSens, sensToPos = sensToRange; // mapping lives in segment.js (unit-tested)
 function setRangePos(p, hud = true) {
   S.segPos = Math.max(0, Math.min(1, p));
   save();
-  $('rangeKnob').style.bottom = `calc(${(S.segPos * 100).toFixed(1)}% - 11px)`;
+  $('rangeKnob').style.bottom = `calc(${(S.segPos * 100).toFixed(1)}% - 8px)`;
   $('rangeFill').style.height = `${(S.segPos * 100).toFixed(1)}%`;
-  if (hud) showHud(t('range.hud', { p: Math.round(S.segPos * 100) }));
+  $('rangeTrack').setAttribute('aria-valuenow', String(Math.round(S.segPos * 100)));
+  if (hud) showHud(t('range.hud.' + rangeLevel(S.segPos)));
   requestAnalysis();
+}
+/** Words for the slider position, so the HUD says what it does rather than a percentage. */
+function rangeLevel(p) {
+  if (p < 0.25) return 'xs';
+  if (p < 0.42) return 's';
+  if (p <= 0.58) return 'm';
+  if (p <= 0.78) return 'l';
+  return 'xl';
 }
 /** For tests: set the tolerance multiplier directly. */
 function setSens(v) { setRangePos(sensToPos(v), false); }
@@ -863,6 +868,8 @@ function syncCorrectUI() {
 function syncSettingsUI() {
   document.querySelectorAll('#setSeg button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.set === S.set)));
   $('appVersion').textContent = 'v' + APP_VERSION;
+  document.querySelectorAll('#retStyle button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.ret === S.reticle)));
+  document.querySelectorAll('#retSize button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.size === S.retSize)));
   $('optBilingual').checked = S.bilingual; $('optOutline').checked = S.outline; $('optDim').checked = S.dim;
   $('optValues').checked = S.values; $('optAutoSpeak').checked = S.autoSpeak;
 }
@@ -893,6 +900,7 @@ function setLanguage(lang) {
   S.lang = lang; save();
   setLang(lang);
   applyI18n();
+  buildReticlePicker();
   syncCorrectUI(); syncSettingsUI(); syncWBUI(); updateToolbar(); updateCard();
   if (!R.lastNaming) $('colorName').textContent = t('card.waiting');
   if (R.lastErr && !$('startError').hidden) $('startError').textContent = t(R.lastErr.key, { msg: R.lastErr.msg });
@@ -906,6 +914,15 @@ function toast(msg, ms = 2600) {
   el.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove('show'), ms);
+}
+
+function renderReticle() {
+  $('retShape').innerHTML = reticleSVG(S.reticle, S.retSize);
+}
+function buildReticlePicker() {
+  const box = $('retStyle');
+  box.innerHTML = RETICLE_STYLES.map((st) => `<button data-ret="${st}">${reticleSVG(st, 'm')}<span>${esc(t('ret.' + st))}</span></button>`).join('');
+  box.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { S.reticle = b.dataset.ret; save(); renderReticle(); syncSettingsUI(); }));
 }
 
 function placeReticle() {
@@ -1008,6 +1025,8 @@ function bind() {
   const setSet = (v) => { S.set = v; save(); R.shownKey = null; syncSettingsUI(); requestAnalysis(); };
   document.querySelectorAll('#setSeg button').forEach((b) => b.addEventListener('click', () => setSet(b.dataset.set)));
   $('btnUpdate').addEventListener('click', checkUpdate);
+  buildReticlePicker();
+  document.querySelectorAll('#retSize button').forEach((b) => b.addEventListener('click', () => { S.retSize = b.dataset.size; save(); renderReticle(); syncSettingsUI(); }));
   $('btnReset').addEventListener('click', resetSettings);
 
   const bindToggle = (id, key, after) => $(id).addEventListener('change', (e) => { S[key] = e.target.checked; save(); if (after) after(); });
@@ -1122,6 +1141,7 @@ function bindGestures() {
 async function boot() {
   setLang(S.lang);
   applyI18n();
+  renderReticle();
   initRenderer();
   if (!R.glOk) app.classList.add('no-gl');
   initWorker();
@@ -1176,7 +1196,7 @@ async function checkUpdate() {
   }
 }
 const APP_FILES = ['./', 'index.html', 'css/style.css', 'js/main.js', 'js/i18n.js', 'js/color.js', 'js/naming.js', 'js/cvd.js',
-  'js/machado.js', 'js/segment.js', 'js/gl.js', 'js/camera.js', 'js/selftest.js', 'js/wb.js', 'js/analysis-worker.js'];
+  'js/machado.js', 'js/segment.js', 'js/gl.js', 'js/camera.js', 'js/selftest.js', 'js/wb.js', 'js/analysis-worker.js', 'js/reticle.js'];
 
 let resetArmed = 0;
 function resetSettings() {

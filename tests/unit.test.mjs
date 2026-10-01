@@ -141,7 +141,7 @@ test('balanced beats pure compensation, also when type/severity are set wrong', 
   }
 });
 
-import { Segmenter } from '../docs/js/segment.js';
+import { Segmenter, rangeToSens, sensToRange } from '../docs/js/segment.js';
 import { severityFromThreshold, axisDir, maxContrast, fitObserver, perceivedDE, SelfTest, processLinear, buildLadder, levelDecision } from '../docs/js/selftest.js';
 
 function synthImage(w, h, fn) {
@@ -417,20 +417,32 @@ test('camera labels: facing and lens type (iOS en/zh, Android)', () => {
   }
 });
 
-test('app default range (≈0.6) still keeps shaded and textured objects whole, and does not leak', () => {
+test('region slider: the middle is the old 20 % value, steps are geometric, and the default still holds objects together', () => {
+  // v1.3.5: the default (slider middle) is the value the old slider gave at 20 %
+  const old = (p) => 0.15 + 1.85 * p * p;
+  assert.ok(Math.abs(rangeToSens(0.5) - old(0.2)) < 1e-3, `middle ${rangeToSens(0.5)}`);
+  assert.ok(Math.abs(rangeToSens(0) - 0.1) < 1e-9 && Math.abs(rangeToSens(1) - 2) < 1e-9);
+  for (const p of [0, 0.13, 0.5, 0.77, 1]) assert.ok(Math.abs(sensToRange(rangeToSens(p)) - p) < 1e-9, `round trip ${p}`);
+  const r = (a, b) => rangeToSens(b) / rangeToSens(a);
+  assert.ok(Math.abs(r(0.1, 0.2) - r(0.3, 0.4)) < 1e-9, 'equal ratio per step in the lower half');
+  const k = rangeToSens(0.5);
   const toS = (v) => Math.round((v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055) * 255);
   const ball = synthImage(140, 140, (x, y) => {
     if (Math.hypot(x - 70, y - 70) >= 40) return [205, 200, 192];
-    const k = 1 - 0.67 * ((x - 30) / 80);
-    return [0.05, 0.35, 0.08].map((v) => toS(v * k));
+    const s = 1 - 0.67 * ((x - 30) / 80);
+    return [0.05, 0.35, 0.08].map((v) => toS(v * s));
   });
-  const a = new Segmenter().run(ball, 50, 70, { sens: 0.6, temporal: false }).area;
-  assert.ok(Math.abs(a - 0.256) < 0.02, `shaded ball ${a.toFixed(3)}`);
+  const a = new Segmenter().run(ball, 50, 70, { sens: k, temporal: false }).area;
+  assert.ok(a > 0.256 * 0.82 && a < 0.256 * 1.05, `shaded ball ${a.toFixed(3)} of 0.256`);
   const leak = synthImage(160, 120, (x, y) => {
     const inDisc = Math.hypot(x - 50, y - 60) < 30, bridge = x >= 80 && x < 100 && Math.abs(y - 60) <= 1;
     if (inDisc || bridge) return [170, 40, 25];
     return x >= 100 ? [190, 110, 60] : [60, 60, 66];
   });
-  const b = new Segmenter().run(leak, 50, 60, { sens: 0.6, temporal: false }).area;
+  const b = new Segmenter().run(leak, 50, 60, { sens: k, temporal: false }).area;
   assert.ok(b < 0.17, `leak ${b.toFixed(3)}`);
+  // two similar reds side by side: separate at the default, merged only near the top of the slider
+  const twin = synthImage(160, 100, (x) => (x < 80 ? [175, 45, 35] : [160, 60, 40]));
+  assert.ok(new Segmenter().run(twin, 40, 50, { sens: k, temporal: false }).area < 0.56);
+  assert.ok(new Segmenter().run(twin, 40, 50, { sens: rangeToSens(0.85), temporal: false }).area > 0.9);
 });

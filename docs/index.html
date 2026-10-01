@@ -36,6 +36,8 @@
       <symbol id="i-lens" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4"/><path d="M12 3.5v4.5M20.5 12H16M12 20.5V16M3.5 12H8"/></symbol>
       <symbol id="i-wb" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor" stroke="none"/></symbol>
       <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-reg-big" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-dasharray="3 2.2"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/></symbol>
+      <symbol id="i-reg-small" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2" stroke-dasharray="2.2 1.8"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/></symbol>
       <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
       <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 3l9.5 17h-19z"/><path d="M12 10v4.5M12 17.5v.5"/></symbol>
       <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.4 0 2-1 2-2 0-1.6-1.6-1.8-1.6-3.2 0-1 .8-1.8 1.9-1.8H17a4 4 0 0 0 4-4C21 6.5 17 3 12 3z"/><circle cx="7.5" cy="11" r="1.3"/><circle cx="10" cy="7" r="1.3"/><circle cx="15" cy="7" r="1.3"/></symbol>
@@ -46,7 +48,7 @@
     <video id="video" playsinline muted autoplay></video>
     <canvas id="view" aria-label="camera view"></canvas>
     <canvas id="overlay" aria-hidden="true"></canvas>
-    <div id="reticle" aria-hidden="true"><span class="ring"></span><span class="tip" data-i18n="wb.aim"></span></div>
+    <div id="reticle" aria-hidden="true"><span id="retShape"></span><span class="ring"></span><span class="tip" data-i18n="wb.aim"></span></div>
     <div id="splitLabels" hidden><span data-i18n="cvd.split.left"></span><span data-i18n="cvd.split.right"></span></div>
 
     <header class="topbar">
@@ -64,10 +66,9 @@
     <div id="hud" hidden></div>
     <div id="zoomChips" class="zoom-chips" hidden></div>
     <div id="rangeCtl" class="range-ctl" hidden>
-      <button class="rc-btn" id="rangePlus" data-i18n-aria="range.more"><svg class="ic"><use href="#i-plus"/></svg></button>
-      <div class="rc-track" id="rangeTrack"><div class="rc-fill" id="rangeFill"></div><div class="rc-knob" id="rangeKnob"></div></div>
-      <button class="rc-btn" id="rangeMinus" data-i18n-aria="range.less"><svg class="ic"><use href="#i-minus"/></svg></button>
-      <span class="rc-label" data-i18n="range.label"></span>
+      <button class="rc-btn" id="rangePlus" data-i18n-aria="range.more"><svg class="ic"><use href="#i-reg-big"/></svg><span data-i18n="range.big"></span></button>
+      <div class="rc-track" id="rangeTrack" role="slider" data-i18n-aria="range.aria"><div class="rc-fill" id="rangeFill"></div><div class="rc-knob" id="rangeKnob"></div></div>
+      <button class="rc-btn" id="rangeMinus" data-i18n-aria="range.less"><span data-i18n="range.small"></span><svg class="ic"><use href="#i-reg-small"/></svg></button>
     </div>
 
     <section class="bottom">
@@ -174,6 +175,15 @@
           <button id="btnSettingsClose" class="chip-btn" data-i18n="settings.close"></button>
         </div>
         <div class="sgroup" data-i18n="settings.groupId"></div>
+        <div class="srow">
+          <div class="label" data-i18n="settings.reticle"></div>
+          <div class="ret-pick" id="retStyle"></div>
+          <div class="seg seg-wide ret-size" id="retSize">
+            <button data-size="s" data-i18n="settings.retSize.s"></button>
+            <button data-size="m" data-i18n="settings.retSize.m"></button>
+            <button data-size="l" data-i18n="settings.retSize.l"></button>
+          </div>
+        </div>
         <label class="tog srow"><input type="checkbox" id="optBilingual"><span data-i18n="settings.bilingual"></span></label>
         <label class="tog srow"><input type="checkbox" id="optValues" checked><span data-i18n="settings.values"></span></label>
         <label class="tog srow"><input type="checkbox" id="optOutline" checked><span data-i18n="settings.outline"></span></label>
