@@ -1,6 +1,6 @@
 {
   "name": "anomalous-trichromatism-helper",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "private": true,
   "description": "Color Vision Helper (色觉助手): real-time color naming, color-region outlining and CVD correction PWA",
   "type": "module",

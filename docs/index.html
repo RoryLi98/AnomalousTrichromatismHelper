@@ -51,6 +51,7 @@
     <video id="video" playsinline muted autoplay></video>
     <canvas id="view" aria-label="camera view"></canvas>
     <canvas id="overlay" aria-hidden="true"></canvas>
+    <div id="frame" aria-hidden="true"></div>
     <div id="reticle" aria-hidden="true"><span id="retShape"></span><span class="ring"></span><span class="tip" data-i18n="wb.aim"></span></div>
     <div id="splitLabels" hidden><span data-i18n="cvd.split.left"></span><span data-i18n="cvd.split.right"></span></div>
 
@@ -66,7 +67,7 @@
       </div>
       </div>
       <div class="top-actions">
-        <button id="btnLang" class="chip-btn"><svg class="ic"><use href="#i-globe"/></svg><span data-i18n="tool.lang"></span></button>
+        <button id="btnLang" class="chip-btn lang-top"><svg class="ic"><use href="#i-globe"/></svg><span data-i18n="tool.lang"></span></button>
         <button id="btnSettings" class="icon-btn" data-i18n-aria="tool.settings"><svg class="ic"><use href="#i-sliders"/></svg></button>
       </div>
     </header>
@@ -87,6 +88,7 @@
             <span id="cpSummary"></span>
             <svg class="ic chev"><use href="#i-chevron"/></svg>
           </button>
+          <button id="btnCpInfo" class="icon-btn sm" data-i18n-aria="info.open"><svg class="ic"><use href="#i-info"/></svg></button>
           <button id="btnTest" class="chip-btn small"><svg class="ic"><use href="#i-test"/></svg><span data-i18n="cvd.test"></span></button>
         </div>
         <div class="cp-body">
@@ -174,26 +176,28 @@
             </div>
             <button id="btnPrintCal" class="wide-btn" data-i18n="tc.btn.printCal"></button>
           </div>
-          <div class="pop-label" data-i18n="tc.more"></div>
-          <label class="tog"><input type="checkbox" id="optTcPreview"><span data-i18n="tc.opt.preview"></span></label>
-          <label class="tog"><input type="checkbox" id="optTcDefSat"><span data-i18n="tc.opt.defSat"></span></label>
-          <div class="btn-row">
-            <button id="btnValidate" class="secondary small" data-i18n="tc.btn.validate"></button>
-            <button id="btnValidateLog" class="secondary small" data-i18n="tc.btn.validateLog"></button>
-          </div>
-          <button id="btnTCReset" class="wide-btn" data-i18n="tc.btn.resetCal" hidden></button>
-          <a class="desc tc-probe" href="lab/camera-probe.html" target="_blank" rel="noopener" data-i18n="tc.probe"></a>
+          <details id="tcMore" class="pop-more">
+            <summary data-i18n="tc.more"></summary>
+            <div class="pop-box">
+              <label class="tog"><input type="checkbox" id="optTcPreview"><span data-i18n="tc.opt.preview"></span></label>
+              <label class="tog"><input type="checkbox" id="optTcDefSat"><span data-i18n="tc.opt.defSat"></span></label>
+              <div class="btn-row">
+                <button id="btnValidate" class="secondary small" data-i18n="tc.btn.validate"></button>
+                <button id="btnValidateLog" class="secondary small" data-i18n="tc.btn.validateLog"></button>
+              </div>
+              <button id="btnTCReset" class="wide-btn" data-i18n="tc.btn.resetCal" hidden></button>
+              <a class="desc tc-probe" href="lab/camera-probe.html" target="_blank" rel="noopener" data-i18n="tc.probe"></a>
+            </div>
+          </details>
         </div>
       </section>
 
-      <section id="guide" class="guide" aria-live="polite">
-        <button id="guideHead" class="guide-head" aria-expanded="false" aria-controls="guideMore">
-          <svg class="ic"><use href="#i-info"/></svg><span id="guideLine"></span><svg class="ic chev"><use href="#i-chevron"/></svg>
-        </button>
-        <div id="guideMore" class="guide-more" hidden></div>
+      <!-- one strip for hints (closable, remembered) and for steps that need the user (always shown) -->
+      <section id="hint" class="hint" hidden aria-live="polite">
+        <button id="hintText" class="hint-text" data-i18n-aria="info.open"><svg class="ic"><use href="#i-info"/></svg><span id="hintLine"></span></button>
+        <span id="hintActions" class="hint-actions"></span>
+        <button id="hintClose" class="hint-close" data-i18n-aria="hint.close"><svg class="ic"><use href="#i-close"/></svg></button>
       </section>
-
-      <div id="tcBar" class="tc-bar" hidden></div>
 
       <section id="card" class="panel" aria-live="polite">
         <div class="card-main">
@@ -201,12 +205,13 @@
           <div class="card-text">
             <div id="colorName" class="name" data-i18n="card.waiting"></div>
             <div id="colorAlt" class="alt"></div>
-            <div id="colorStatus" class="status"></div>
+            <div id="colorSub" class="sub"></div>
           </div>
           <button id="btnSpeak" class="icon-btn" data-i18n-aria="tool.speak"><svg class="ic"><use href="#i-speak"/></svg></button>
         </div>
+        <div id="colorMsgs" class="msgs"></div>
         <div class="card-foot">
-          <div id="colorSub" class="sub"></div>
+          <div id="colorStatus" class="status"></div>
           <div class="name-set" role="group" aria-labelledby="setLbl">
             <span id="setLbl" class="name-set-lbl" data-i18n="set.label"></span>
             <div class="seg seg-mini" id="setSeg">
@@ -262,6 +267,23 @@
         <label class="tog srow"><input type="checkbox" id="optOutline" checked><span data-i18n="settings.outline"></span></label>
         <label class="tog srow"><input type="checkbox" id="optDim"><span data-i18n="settings.dim"></span></label>
         <label class="tog srow"><input type="checkbox" id="optAutoSpeak"><span data-i18n="settings.autospeak"></span></label>
+        <div class="sgroup" data-i18n="settings.groupDisplay"></div>
+        <div class="srow">
+          <div class="label" data-i18n="settings.textSize"></div>
+          <div class="seg seg-wide" id="textSizeSeg">
+            <button data-size="m" data-i18n="settings.text.m"></button>
+            <button data-size="l" data-i18n="settings.text.l"></button>
+            <button data-size="xl" data-i18n="settings.text.xl"></button>
+          </div>
+        </div>
+        <div class="srow srow-btn">
+          <div><div class="srow-title" data-i18n="settings.lang"></div><div class="desc" data-i18n="settings.langDesc"></div></div>
+          <button id="btnLangSet" class="chip-btn"><svg class="ic"><use href="#i-globe"/></svg><span data-i18n="tool.lang"></span></button>
+        </div>
+        <div class="srow srow-btn">
+          <div><div class="srow-title" data-i18n="settings.hints"></div><div class="desc" data-i18n="settings.hintsDesc"></div></div>
+          <button id="btnHintsReset" class="chip-btn" data-i18n="settings.hintsReset"></button>
+        </div>
         <div class="sgroup" data-i18n="settings.groupApp"></div>
         <details class="srow fold">
           <summary data-i18n="settings.tips"></summary>
@@ -339,6 +361,19 @@
             <button id="btnTestRetry" class="secondary" data-i18n="test.retry"></button>
           </div>
         </div>
+      </div>
+    </section>
+
+    <!-- how the current reading works, the numbers in use and what to adjust -->
+    <section id="infoSheet" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="infoTitle">
+      <div class="sheet-inner">
+        <div class="sheet-head">
+          <h2 id="infoTitle" data-i18n="info.title"></h2>
+          <button id="btnInfoClose" class="chip-btn" data-i18n="settings.close"></button>
+        </div>
+        <p id="infoLine" class="info-line"></p>
+        <div id="infoActions" class="info-actions"></div>
+        <div id="infoBody" class="info-body"></div>
       </div>
     </section>
 

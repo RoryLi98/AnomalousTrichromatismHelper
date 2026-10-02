@@ -10,7 +10,8 @@ The object is orange (#FFA500) but reads as brown in the picture. Checks:
   * Real scene, automatic: the ColorChecker in view is found live and used; orange
   * white paper: found next to the object; orange
   * camera only: the white anchor is shown, and "not white → light gray" makes the object darker
-  * the guide line is always there and expands into the principle and the numbers in use
+  * the hint line opens the explanation sheet; closed with ×, it stays closed and the ⓘ chip on the
+    colour card reopens the explanation; Settings shows hints again and changes the text size
   * chart: freezing averages several frames; the chart is found on the frozen frame without
     tapping and saved as this lens's calibration; tapping the four corners (any order) also works;
     the paper estimate then goes through the calibration
@@ -31,8 +32,10 @@ STATE = """() => { const {R} = window.__cvh; const n = R.lastNaming; const tc = 
   return n && {basic: n.basicKey, desc: n.desc.en, rgb: R.lastRgb, tc: tc && {src: tc.source, conf: tc.conf, notes: tc.notes, profiled: !!tc.profiled,
     anchorAt: !!(tc.anchor && tc.anchor.at)},
     paper: !!(R.tc.stats && R.tc.stats.paper && R.tc.stats.paper.found), anchor: R.tc.anchor && R.tc.anchor.neutral,
-    status: document.getElementById('colorStatus').textContent, bar: document.getElementById('tcBar').textContent,
-    guide: document.getElementById('guideLine').textContent, guideShown: !document.getElementById('guide').hidden,
+    status: document.getElementById('colorStatus').textContent + ' · ' + document.getElementById('colorMsgs').textContent,
+    bar: document.getElementById('hint').hidden ? '' : document.getElementById('hintLine').textContent + ' ' + document.getElementById('hintActions').textContent,
+    guide: document.getElementById('hintLine').textContent, guideShown: !document.getElementById('hint').hidden,
+    gline: window.__cvh.guideContent().line, hintStep: document.getElementById('hint').classList.contains('step'),
     chart: R.tc.chart && +R.tc.chart.residual.toFixed(2), live: !!R.tc.liveChart, kind: R.kind, scene: window.__cvh.S.scene,
     toast: document.getElementById('toast').textContent}; }"""
 
@@ -87,16 +90,29 @@ def with_paper(page):
     page.evaluate("() => window.__cvh.setTCSource('camera')"); settle(page, 6)
     out['camera'] = page.evaluate(STATE)
     page.screenshot(path=f'{OUT}/tc_camera.png')
-    page.click('#tcNotWhite'); page.wait_for_timeout(150)
-    out['anchorMenu'] = page.evaluate("() => document.getElementById('tcBar').textContent")
-    page.click('#tcRhoLight'); settle(page, 4)
+    page.click('#hint [data-act=notWhite]'); page.wait_for_timeout(150)
+    out['anchorMenu'] = page.evaluate("() => document.getElementById('hint').textContent")
+    page.click('#hint [data-act=rhoLight]'); settle(page, 4)
     out['gray'] = page.evaluate(STATE)
-    page.click('#tcRhoWhite'); settle(page, 3)
-    # ---- the guide expands into the principle
-    page.click('#guideHead'); page.wait_for_timeout(200)
-    out['guideMore'] = page.evaluate("() => ({ shown: !document.getElementById('guideMore').hidden, text: document.getElementById('guideMore').textContent })")
+    page.click('#hint [data-act=rhoWhite]'); settle(page, 3)
+    # ---- tapping the hint opens the explanation sheet
+    page.click('#hintText'); page.wait_for_timeout(300)
+    out['guideMore'] = page.evaluate("() => ({ shown: !document.getElementById('infoSheet').hidden, text: document.getElementById('infoSheet').textContent })")
     page.screenshot(path=f'{OUT}/tc_guide.png')
-    page.click('#guideHead'); page.wait_for_timeout(100)
+    page.click('#btnInfoClose'); page.wait_for_timeout(100)
+    # ---- closing the hint: it stays closed (also after switching scenes), the card's chip reopens the explanation
+    page.click('#hintClose'); page.wait_for_timeout(200)
+    page.click('#sceneScreen'); page.wait_for_timeout(300); page.click('#sceneReal'); settle(page, 3)
+    out['hintClosed'] = page.evaluate("() => ({ hidden: document.getElementById('hint').hidden, saved: JSON.parse(localStorage.getItem('cvh.settings.v1')).hintsOff })")
+    page.screenshot(path=f'{OUT}/tc_hint_closed.png')
+    page.click('#colorStatus'); page.wait_for_timeout(300)
+    out['reopen'] = page.evaluate("() => !document.getElementById('infoSheet').hidden")
+    page.click('#btnInfoClose')
+    # ---- Settings: text size, and showing the hints again
+    page.click('#btnSettings'); page.click('#textSizeSeg button[data-size=l]'); page.click('#btnHintsReset'); page.click('#btnSettingsClose')
+    settle(page, 3)
+    out['display'] = page.evaluate("() => ({ fs: getComputedStyle(document.documentElement).getPropertyValue('--fs').trim(), name: parseFloat(getComputedStyle(document.getElementById('colorName')).fontSize), hint: !document.getElementById('hint').hidden })")
+    page.click('#btnSettings'); page.click('#textSizeSeg button[data-size=m]'); page.click('#btnSettingsClose')
     # ---- chart on a frozen frame: averaged freeze, found without tapping, saved as lens calibration
     page.evaluate("() => window.__cvh.setTCSource('chart')")
     page.evaluate("() => window.__cvh.startChartPick('measure')")
@@ -142,7 +158,7 @@ def with_paper(page):
     page.evaluate("() => { const {S} = window.__cvh; S.cvd.method = 'compensate'; S.cvd.strength = 0; window.__cvh.setTCSource('camera'); window.__cvh.setMode('correct'); }")
     page.wait_for_function("() => !!window.__cvh.R.tc.gpu", timeout=15000); page.wait_for_timeout(600)
     page.screenshot(path=f'{OUT}/tc_correct_real.png')
-    out['corReal'] = {'px': pixel(f'{OUT}/tc_correct_real.png', page, *META['target']), 'guide': page.evaluate("() => document.getElementById('guideLine').textContent")}
+    out['corReal'] = {'px': pixel(f'{OUT}/tc_correct_real.png', page, *META['target']), 'guide': page.evaluate("() => document.getElementById('hintLine').textContent")}
     page.click('#sceneScreen'); page.wait_for_timeout(600)
     page.screenshot(path=f'{OUT}/tc_correct_screen.png')
     out['corScreen'] = {'px': pixel(f'{OUT}/tc_correct_screen.png', page, *META['target']), 'gpu': page.evaluate("() => window.__cvh.R.tc.gpu")}
@@ -159,12 +175,13 @@ def with_paper(page):
     page.wait_for_function("() => !window.__cvh.R.tc.busy && Object.values(window.__cvh.S.tc.cams).some(c => c.manual)", timeout=60000)
     out['torchVerify'] = page.evaluate("""() => ({ toast: document.getElementById('toast').textContent,
       manual: Object.values(window.__cvh.S.tc.cams).map(c => c.manual)[0], applied: window.__applied.slice(0, 6),
-      last: window.__applied.slice(-3), bar: document.getElementById('tcBar').textContent,
+      last: window.__applied.slice(-3), bar: document.getElementById('hint').textContent,
       recheckShown: !document.getElementById('btnTorchRecheck').hidden })""")
     out['recheck'] = page.evaluate("""() => { document.getElementById('btnTorchRecheck').click();
       return { cleared: Object.values(window.__cvh.S.tc.cams).every(c => !c.manual), hidden: document.getElementById('btnTorchRecheck').hidden }; }""")
     # clearing the lens calibration
     page.click('#btnWBTool'); page.wait_for_timeout(200)
+    page.click('#tcMore summary'); page.wait_for_timeout(150)   # less-used options are folded away
     page.click('#btnTCReset'); page.wait_for_timeout(200)
     out['afterReset'] = page.evaluate("() => ({ cams: Object.keys(window.__cvh.S.tc.cams).length, reset: !document.getElementById('btnTCReset').hidden })")
     page.click('#btnWBTool'); page.wait_for_timeout(200)
@@ -207,8 +224,10 @@ checks = {
         and '虚线框' in R['camera']['guide'],
     'camera only: "light gray" makes it darker': 'anchorUser' in R['gray']['tc']['notes'] and lum(R['gray']['rgb']) < 0.95 * lum(R['camera']['rgb'])
         and '浅灰' in R['anchorMenu'],
-    'guide expands into the principle and numbers': R['guideMore']['shown'] and '原理' in R['guideMore']['text'] and '现在用到的数据' in R['guideMore']['text'],
-    'freeze averages several frames': R['freeze'] and R['freeze']['frames'] >= 5 and '帧平均' in R['chart']['guide'],
+    'hint opens the explanation (principle and numbers)': R['guideMore']['shown'] and '原理' in R['guideMore']['text'] and '现在用到的数据' in R['guideMore']['text'],
+    'closed hint stays closed; chip reopens the explanation': R['hintClosed']['hidden'] and R['hintClosed']['saved'].get('real.identify') and R['reopen'],
+    'text size setting and hints shown again': R['display']['fs'] == '1.15' and R['display']['name'] > 26 and R['display']['hint'],
+    'freeze averages several frames': R['freeze'] and R['freeze']['frames'] >= 5 and '帧平均' in R['chart']['gline'],
     'chart found on the frozen frame without tapping': R['chartAuto'] and R['chart']['chart'] is not None and R['chart']['chart'] < 4 and R['chart']['kind'] == 'frozen',
     'chart says orange': R['chart']['tc']['src'] == 'chart' and R['chart']['basic'] == 'orange',
     'chart by tapping four corners in any order': R['chartTapped']['residual'] is not None and R['chartTapped']['residual'] < 4 and not R['chartTapped']['auto'],
@@ -228,7 +247,7 @@ checks = {
     'check-again button offered and works': R['torchVerify']['recheckShown'] and R['recheck']['cleared'] and R['recheck']['hidden'],
     'calibration can be cleared': R['afterReset']['cams'] == 0 and not R['afterReset']['reset'],
     'camera only without paper says orange': R['cameraNoPaper']['tc']['src'] == 'camera' and R['cameraNoPaper']['basic'] == 'orange',
-    'photo: asked, real photo stays in true colour': R['photoReal']['kind'] == 'photo' and R['photoReal']['scene'] == 'real' and '照片' in R['photoReal']['guide'],
+    'photo: asked, real photo stays in true colour': R['photoReal']['kind'] == 'photo' and R['photoReal']['scene'] == 'real' and '照片' in R['photoReal']['gline'],
     'photo: screenshot switches to the screen scene': R['photoScreen']['scene'] == 'screen' and R['photoScreen']['tc'] is None,
     'no page errors': not errors,
 }

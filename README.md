@@ -10,7 +10,7 @@ A camera web app for people with color blindness or color weakness: no install, 
 
 [**Open the app →**](https://ruilin.li/AnomalousTrichromatismHelper/) &nbsp;·&nbsp; English &nbsp;·&nbsp; [简体中文](README.zh-CN.md)
 
-<a href="https://ruilin.li/AnomalousTrichromatismHelper/"><img src="https://img.shields.io/badge/version-1.5.0-2ea44f" alt="version 1.5.0"></a>
+<a href="https://ruilin.li/AnomalousTrichromatismHelper/"><img src="https://img.shields.io/badge/version-1.5.1-2ea44f" alt="version 1.5.1"></a>
 <img src="https://img.shields.io/badge/PWA-installable-5a0fc8" alt="PWA">
 <img src="https://img.shields.io/badge/correction-real--time_WebGL-d9480f" alt="real-time WebGL correction">
 <img src="https://img.shields.io/badge/platform-Android_%7C_iOS_15%2B-1f6feb" alt="Android / iOS 15+">
@@ -42,7 +42,7 @@ A camera web app for people with color blindness or color weakness: no install, 
     - **White paper:** a sheet of white paper, or an 18 % gray card, next to the object.
     - **Torch:** the picture with the torch on and off at a locked exposure (Chrome on Android, on cameras where manual exposure works; the app checks).
     - **Chart:** a ColorChecker, or a 14-patch card you print from the app. A chart in view is found automatically.
-  - **A guide line above the color card** always says which source is being used and what it is based on, and what would make the reading more accurate. Tap it for the full explanation and the numbers in use.
+  - **A hint line above the color card** says which source is being used and what it is based on, with one optional action (such as **Not white**). Tap it for the full explanation, the numbers in use and everything that can be adjusted. Close it with × and it stays closed; the **ⓘ** chip on the color card (or ⓘ on the correction panel) opens the explanation again, and **Settings → Hints → Show again** brings the hints back. Steps that need you (picking a chart, tapping the paper, a measurement running) are always shown.
   - **Not sure? Two names.** When the color's name would change within the method's typical error, the card says “orange or brown” and why.
   - **Correct in the Real scene** restores the whole picture to the objects' own colors first, then corrects it, so dim scenes still have color differences to work with.
   - Freezing in the Real scene averages up to 8 frames for less noise. A photo from the gallery asks whether it shows real objects or a screen.
@@ -54,7 +54,8 @@ A camera web app for people with color blindness or color weakness: no install, 
   - White balance: automatic, or one-tap white-card calibration.
   - Camera: a lens picker, full 4:3 framing, zoom and torch.
   - Also: freeze, gallery photos, spoken names, and five reticle styles that keep the centre clear.
-- **English / 中文** in one tap. Everything runs on the phone, and nothing is uploaded.
+- **Easy to read.** Text size Standard / Large / Extra large in Settings; buttons are at least 40 px tall; one shape system (rounded panels, pill-shaped choices, round icon buttons, rounded picture corners).
+- **English / 中文** in Settings (and in the top bar on wide screens). Everything runs on the phone, and nothing is uploaded.
 
 ## Quick start
 
@@ -238,9 +239,9 @@ The 49 unit tests cover:
 - true color: each source against a physical simulation of a phone camera (`tests/fixtures/truecolor_sim.json`), white-paper detection (also next to a lit wall), chart orientation, printed-card calibration, the lens calibration, and the manual-exposure check and torch sequence against a simulated camera;
 - 1.5: shadows, torch without paper, two names when unsure, mixed light, the white anchor's position, the default saturation curve, automatic chart detection (rotated, small, printed card; not a tiled wall), validation scoring, and the shader transform against the per-color estimates.
 
-The true-color end-to-end test (`tests/e2e_truecolor.py`, 26 checks) runs both scenes through Chromium's fake camera: the brown-looking orange object becomes orange with the chart found live, with white paper and with camera only; the guide line, “Not white”, averaged freeze, chart found on the frozen frame or tapped, lens calibration, validation with JSON export, Correct mode in the Real scene, the torch checks and the photo prompt.
+The true-color end-to-end test (`tests/e2e_truecolor.py`, 28 checks) runs both scenes through Chromium's fake camera: the brown-looking orange object becomes orange with the chart found live, with white paper and with camera only; the hint line and its explanation sheet, closing and reopening hints, text size, “Not white”, averaged freeze, chart found on the frozen frame or tapped, lens calibration, validation with JSON export, Correct mode in the Real scene, the torch checks and the photo prompt.
 
-To see which camera controls your phone gives a web page (torch, manual exposure, white-balance presets, focus), open [`lab/camera-probe.html`](https://ruilin.li/AnomalousTrichromatismHelper/lab/camera-probe.html) on the phone. The link is also at the bottom of **Light → True color**.
+To see which camera controls your phone gives a web page (torch, manual exposure, white-balance presets, focus), open [`lab/camera-probe.html`](https://ruilin.li/AnomalousTrichromatismHelper/lab/camera-probe.html) on the phone. The link is also under **Light → More options**.
 
 <details>
 <summary><b>Project layout</b></summary>

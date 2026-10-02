@@ -17,7 +17,7 @@ import {
 import { findChart } from './chartdetect.js';
 import { measureCaps, verifyManualExposure, torchMeasure } from './measure.js';
 
-export const APP_VERSION = '1.5.0';
+export const APP_VERSION = '1.5.1';
 const $ = (id) => document.getElementById(id);
 const app = $('app'), video = $('video'), overlay = $('overlay');
 let view = $('view');
@@ -40,6 +40,8 @@ const DEFAULTS = {
   // true colour: src = auto | camera | paper | torch | chart; preview = show the true-colour picture in
   // Identify too; defaultSat = default low-light saturation curve for cameras without a chart calibration
   tc: { src: 'auto', rho: 0.85, chart: 'cc24', cams: {}, printRef: null, preview: false, defaultSat: false },
+  // display: text size m | l | xl; hints closed with × (by "scene.mode"); one-time tips already shown
+  textSize: 'm', hintsOff: {}, hintTipShown: false,
 };
 function loadSettings() {
   let saved = null;
@@ -77,7 +79,7 @@ const R = {
     stats: null, anchors: [], anchor: null, noise: null, held: null, chart: null, pick: null, busy: false, last: null, screen: null, paperAt: null, paperPick: false,
     liveChart: null, lastDetect: 0, detectDone: false,  // chart found automatically (live, or once per frozen frame)
     anchorRho: null, anchorMenu: false, shadow: 'auto',  // the user's answers about the white anchor and shadows
-    freezeInfo: null, amb: null, gpu: null, guideOpen: false, pendingValidate: false, photoReal: false,
+    freezeInfo: null, amb: null, gpu: null, pendingValidate: false, photoReal: false, hintShown: false,
   },
 };
 /** Ask for a fresh analysis on the next frame (after the texture is up to date). */
@@ -152,7 +154,8 @@ function layout() {
     const toolbarTop = document.querySelector('.toolbar').getBoundingClientRect().top;
     // a fixed reserve for the colour card (or collapsed panel), so the picture never jumps
     // when the card text changes height
-    const reserve = S.mode === 'identify' ? CARD_RESERVE : PANEL_RESERVE;
+    const fs = TEXT_SCALE[S.textSize] || 1;
+    const reserve = ((S.mode === 'identify' ? CARD_RESERVE : PANEL_RESERVE) + (R.tc.hintShown ? HINT_RESERVE : 0)) * fs;
     let ay = top, ah = toolbarTop - top;
     if (ah < H * 0.35) { ay = 0; ah = H; } // not enough room: use the whole screen
     const sa = sw / sh;
@@ -163,6 +166,10 @@ function layout() {
   }
   const changed = ['x', 'y', 'w', 'h'].some((k) => Math.abs(rect[k] - R.rect[k]) > 0.5);
   R.rect = rect;
+  // rounded corners for the picture when it does not fill the screen (a dark mask around it)
+  const fr = $('frame');
+  fr.hidden = !(R.source && S.frame === 'fit');
+  Object.assign(fr.style, { left: `${rect.x}px`, top: `${rect.y}px`, width: `${rect.w}px`, height: `${rect.h}px` });
   if (R.glOk) R.renderer.setViewport(rect.x * R.dpr, rect.y * R.dpr, rect.w * R.dpr, rect.h * R.dpr);
   // analysis resolution ≈ 80k pixels with the picture's aspect ratio
   const va = rect.w / rect.h;
@@ -180,7 +187,17 @@ function layout() {
   if (changed) { R.newFrame = true; requestAnalysis(); }
 }
 
-const CARD_RESERVE = 150, PANEL_RESERVE = 96; // identify: guide + colour card; correct: guide + collapsed panel
+// room kept under the picture (CSS px at text size 1): colour card or collapsed correction panel, and
+// the hint strip while it is shown. Fixed per state, so the picture does not jump when text changes.
+const CARD_RESERVE = 150, PANEL_RESERVE = 66, HINT_RESERVE = 62;
+const TEXT_SCALE = { m: 1, l: 1.15, xl: 1.3 };
+function setTextSize(v) {
+  if (!TEXT_SCALE[v]) return;
+  S.textSize = v; save();
+  applyTextSize(); syncSettingsUI();
+  requestAnimationFrame(() => { layout(); placeFloating(); });
+}
+function applyTextSize() { document.documentElement.style.setProperty('--fs', String(TEXT_SCALE[S.textSize] || 1)); }
 
 /** Cover-crop of the source matching the picture rect (and digital zoom), in source pixels. */
 function crop() {
@@ -526,6 +543,7 @@ function ambOf(naming) {
 }
 
 const WARN_SVG = '<svg class="ic ic-s"><use href="#i-warn"/></svg>';
+function setHTML(el, html) { if (el.dataset.html !== html) { el.innerHTML = html; el.dataset.html = html; } }
 function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
 function updateCard() {
@@ -537,30 +555,37 @@ function updateCard() {
   const tx = colorTexts(naming);
   $('colorName').textContent = tx.name;
   $('colorAlt').textContent = tx.alt;
-  // status: exposure warnings first, then "may also be called", then the light colour
+  // status: a chip that says where the colour comes from (tap: how it works), then at most a couple
+  // of short messages; what the hint strip already says is not repeated here
   const st = [];
   const p = R.patch;
   const tc = tcOn() ? R.tc.last : null;
+  const chip = (text) => `<button class="tag-chip"><svg class="ic"><use href="#i-info"/></svg><span>${esc(text)}</span></button>`;
+  const SHOWN_NOTES = ['noAnchor', 'shadow', 'paperClip', 'torchDist', 'torchWeak', 'chartPoor', 'torchAnchor'];
   if (tcOn()) {
-    // true colour: where it came from and how far to trust it, then what the picture shows
-    if (tc) st.push(`<b class="tc-tag">${esc(t('tc.tag', { src: t('tc.tag.' + tc.source), conf: t('tc.conf.' + tc.conf) }))}</b>`);
+    // the top bar already says "true colour": the chip says the source and how sure
+    st.push(chip(tc ? t('tc.tagShort', { src: t('tc.tag.' + tc.source), conf: t('tc.conf.' + tc.conf) }) : t('tc.on')));
     const amb = ambOf(naming);
-    if (amb) st.push(`<b class="tc-amb">${esc(t('tc.amb.line', { b: BASIC[amb.alt][lang], why: t('tc.amb.why.' + amb.cause) }))}</b>`);
-    for (const n of (tc ? tc.notes : [])) st.push(WARN_SVG + esc(t('tc.note.' + n)));
+    if (amb) st.push(`<b class="tc-amb">${esc(t('tc.amb.short', { b: BASIC[amb.alt][lang] }))}</b>`);
+    const notes = (tc ? tc.notes : []).filter((n) => SHOWN_NOTES.includes(n));
+    if (notes.length) st.push(WARN_SVG + esc(t('tc.note.' + notes[0])));
     if (p && p.clipped > 0.35) st.push(WARN_SVG + esc(t('warn.over')));
-    if (naming.alt) st.push(esc(t('card.maybe', { x: naming.alt[lang] })));
+    if (naming.alt && !amb) st.push(esc(t('card.maybe', { x: naming.alt[lang] })));
     const sc = R.tc.screen;
     if (sc && sc.basicKey !== naming.basicKey) st.push(esc(t('tc.screen', { x: sc.basic[lang] })));
   } else {
+    st.push(chip(t('tag.screen')));
     if (p && p.clipped > 0.35) st.push(WARN_SVG + esc(t('warn.over')));
     else if (p && p.Y < 0.012) st.push(WARN_SVG + esc(t('warn.dark')));
     if (naming.alt) st.push(esc(t('card.maybe', { x: naming.alt[lang] })));
   }
-  $('colorStatus').innerHTML = st.join(' · ');
+  // only touch the DOM when something changed: a button that is replaced every frame cannot be tapped
+  setHTML($('colorStatus'), st[0]);
+  setHTML($('colorMsgs'), st.slice(1).join(' · '));
   $('card').classList.toggle('tc-card', tcOn());
   syncGuide();
   // one line with the values only
-  $('colorSub').innerHTML = S.values ? `<span class="hex" data-hex="${hex}">${hex}</span> · <span class="rgb">RGB ${rgb.join(', ')}</span>` : '';
+  setHTML($('colorSub'), S.values ? `<span class="hex" data-hex="${hex}">${hex}</span> · <span class="rgb">RGB ${rgb.join(', ')}</span>` : '');
 }
 
 function speakText(text) {
@@ -955,11 +980,16 @@ function drawTCMarks(ctx) {
     ctx.lineWidth = 4 * d; ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.stroke();
     ctx.lineWidth = 2 * d; ctx.strokeStyle = '#fff'; ctx.stroke();
   };
+  const fs = TEXT_SCALE[S.textSize] || 1;
   const label = (text, x, y) => {
-    ctx.font = `700 ${11.5 * d}px sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
-    const w = ctx.measureText(text).width + 10 * d;
-    ctx.fillStyle = 'rgba(0,0,0,0.72)'; ctx.fillRect(x, y - 18 * d, w, 18 * d);
-    ctx.fillStyle = '#fff'; ctx.fillText(text, x + 5 * d, y - 3 * d);
+    const fh = 12.5 * fs * d, h = fh + 9 * d;
+    ctx.font = `700 ${fh}px sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    const w = ctx.measureText(text).width + 14 * d;
+    ctx.fillStyle = 'rgba(0,0,0,0.72)';
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x, y - h - 3 * d, w, h, 7 * d); else ctx.rect(x, y - h - 3 * d, w, h);
+    ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.fillText(text, x + 7 * d, y - h / 2 - 3 * d);
   };
   const box = (at, text) => {
     const [x0, y0] = P(at.x, at.y), [x1, y1] = P(at.x + at.w, at.y + at.h);
@@ -967,7 +997,7 @@ function drawTCMarks(ctx) {
     ctx.lineWidth = 3.5 * d; ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
     ctx.lineWidth = 1.6 * d; ctx.strokeStyle = '#fff'; ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
     ctx.restore();
-    label(text, Math.max(rc.x * d + 2, Math.min(x0, (rc.x + rc.w) * d - 150 * d)), Math.max((rc.y + 20) * d, y0));
+    if (text) label(text, Math.max(rc.x * d + 2, Math.min(x0, (rc.x + rc.w) * d - 150 * d)), Math.max((rc.y + 20) * d, y0));
   };
   const pk = R.tc.pick;
   if (pk) {
@@ -995,8 +1025,9 @@ function drawTCMarks(ctx) {
   }
   // camera only: the surface taken as white (a dashed box), so the user can judge it
   if (!pk && e && e.source === 'camera' && e.anchor && e.anchor.at && !e.held) {
+    // the label explains the box; once the hint is closed the box alone is enough
     const key = R.tc.anchorRho ? 'tc.mark.user' : e.anchorLocal ? 'tc.mark.local' : e.anchor.neutral ? 'tc.mark.white' : 'tc.mark.bright';
-    box(e.anchor.at, t(key, { p: Math.round((R.tc.anchorRho || 0) * 100) }));
+    box(e.anchor.at, hintClosed() && !R.tc.anchorMenu ? '' : t(key, { p: Math.round((R.tc.anchorRho || 0) * 100) }));
   }
 }
 
@@ -1024,68 +1055,135 @@ function setTCSource(src) {
   syncTCUI(); syncTCBar(); syncGuide(); requestAnalysis();
 }
 
-/** Bar above the colour card: what the true-colour mode is doing and its one or two actions. */
-function syncTCBar() {
-  const bar = $('tcBar');
-  const show = tcOn() && S.mode === 'identify' && !!R.source;
-  let html = '';
-  if (show) {
-    const btn = (id, key, cls = '', vars) => `<button id="${id}" class="tc-btn ${cls}">${esc(t(key, vars))}</button>`;
-    const msg = (key, vars) => `<span class="tc-msg">${esc(t(key, vars))}</span>`;
-    const pk = R.tc.pick;
-    const h = R.tc.held;
-    const e = R.tc.last;
-    const lc = activeChart();
-    if (R.tc.busy || R.freezing) html = msg(R.freezing ? 'tc.bar.freezing' : 'tc.bar.busy');
-    else if (R.tc.paperPick) html = msg('tc.bar.pickPaper') + btn('tcCancelPaper', 'tc.btn.cancel');
-    else if (pk) {
+// ---------------- hint strip and the explanation sheet ----------------
+// One strip above the colour card shows either
+//  - a step that needs the user now (choosing a chart, tapping the paper, a measurement running, a
+//    held torch result, "how gray is it?"): always shown, no close button; or
+//  - a hint: what is being measured and how, with at most one optional action. A hint closed with ×
+//    stays closed for this scene and mode. The ⓘ chip on the colour card (or ⓘ on the correction
+//    panel) opens the full explanation in a sheet, and Settings → "Show tips again" brings hints back.
+
+/** Actions for buttons in the strip and in the sheet (data-act="..."). */
+const ACT = {
+  undo: () => undoChartTap(), cancel: () => cancelChartPick(),
+  done: () => { clearTCHold(); resumeLive(); syncTCBar(); },
+  again: () => measureTorch(), measure: () => { closeInfo(); measureTorch(); },
+  live: () => { R.tc.held = null; R.smooth = null; R.shownKey = null; syncTCBar(); requestAnalysis(); },
+  pick: () => { closeInfo(); startChartPick('measure'); },
+  cancelPaper: () => { R.tc.paperPick = false; syncTCBar(); },
+  pickPaper: () => { closeInfo(); startPaperPick(); }, paperAuto: () => clearPaperAt(),
+  notWhite: () => { R.tc.anchorMenu = true; syncTCBar(); },
+  rhoLight: () => setAnchorRho(0.6), rhoMid: () => setAnchorRho(0.35), rhoWhite: () => setAnchorRho(null),
+  rhoCancel: () => { R.tc.anchorMenu = false; syncTCBar(); },
+  noShadow: () => setShadow('off'), shadowAuto: () => setShadow('auto'),
+  saveLens: () => saveLiveChartCalibration(),
+  validate: () => { closeInfo(); startValidation(); },
+  light: () => { closeInfo(); setWBOpen(true); },
+};
+function setAnchorRho(v) { R.tc.anchorRho = v; R.tc.anchorMenu = false; R.smooth = null; R.shownKey = null; syncTCBar(); updateGpuTC(); requestAnalysis(); }
+function setShadow(v) { R.tc.shadow = v; R.smooth = null; syncTCBar(); requestAnalysis(); }
+const hintKey = () => `${S.scene}.${S.mode}`;
+const hintClosed = () => !!(S.hintsOff && S.hintsOff[hintKey()]);
+
+/** What the strip shows now: {kind: 'step' | 'hint' | null, line, acts: [[act, labelKey, primary?]]}. */
+function hintState() {
+  if (!R.source) return { kind: null };
+  const step = (key, vars, acts = []) => ({ kind: 'step', line: t(key, vars), acts });
+  if (tcOn() && S.mode === 'identify') {
+    const pk = R.tc.pick, h = R.tc.held, lc = activeChart();
+    if (R.tc.busy || R.freezing) return step(R.freezing ? 'tc.bar.freezing' : 'tc.bar.busy');
+    if (R.tc.paperPick) return step('tc.bar.pickPaper', null, [['cancelPaper', 'tc.btn.cancel']]);
+    if (pk) {
       const key = pk.purpose === 'printCal' ? (pk.stage === 0 ? 'tc.bar.pickCC' : 'tc.bar.pickPrint') : pk.purpose === 'validate' ? 'tc.bar.pickVal' : 'tc.bar.pick';
-      html = msg(R.tc.autoPick ? 'tc.bar.looking' : key, { n: pk.pts.length }) + btn('tcUndo', 'tc.btn.undo') + btn('tcCancel', 'tc.btn.cancel');
-    } else if (R.tc.chart && R.kind !== 'camera') {
-      html = msg(R.tc.chart.auto ? 'tc.bar.chartAuto' : 'tc.bar.chart', { e: R.tc.chart.residual.toFixed(1) }) + btn('tcDone', 'tc.btn.done', 'primary-sm');
-    } else if (h && h.retVer === R.retVer && h.kind === R.kind) {
-      html = msg('tc.bar.held', { src: t('tc.tag.' + h.est.source) }) + btn('tcAgain', 'tc.btn.again') + btn('tcLive', 'tc.btn.live');
-    } else if (R.tc.anchorMenu) {
-      html = msg('tc.bar.anchorAsk') + btn('tcRhoLight', 'tc.btn.rhoLight') + btn('tcRhoMid', 'tc.btn.rhoMid') + btn('tcRhoWhite', 'tc.btn.rhoWhite') + btn('tcRhoCancel', 'tc.btn.cancel');
-    } else if (lc) {
-      const canSave = R.kind === 'camera' && (lc.kind === 'cc24' || S.tc.printRef) && lc.residual <= 3;
-      html = msg('tc.bar.chartLive', { e: lc.residual.toFixed(1) }) + (canSave ? btn('tcSaveLens', 'tc.btn.saveLens') : '');
-    } else if (S.tc.src === 'torch') {
-      const ts = torchState();
-      html = msg(ts.ok ? 'tc.bar.torch' : 'tc.bar.torchNo') + (ts.ok ? btn('tcMeasure', 'tc.btn.measure', 'primary-sm') : '');
-    } else if (S.tc.src === 'chart') {
-      html = msg('tc.bar.chartStart') + btn('tcPick', 'tc.btn.pick', 'primary-sm');
-    } else if (S.tc.src === 'paper' && !paperUsable(R.tc.stats)) {
-      html = R.tc.paperAt ? msg('tc.bar.paperManual') + btn('tcPaperAuto', 'tc.btn.paperAuto')
-        : msg('tc.bar.paperMissing') + btn('tcPickPaper', 'tc.btn.pickPaper', 'primary-sm');
-    } else if (S.tc.src === 'paper' || (e && e.source === 'paper')) {
-      html = R.tc.paperAt ? msg('tc.bar.paperManual') + btn('tcPaperAuto', 'tc.btn.paperAuto') : msg('tc.bar.paperAuto') + btn('tcPickPaper', 'tc.btn.pickPaper');
-    } else if (e && e.source === 'camera') {
-      // camera only: the anchor and the shadow can be wrong, and the user can tell
-      if (R.tc.anchorRho) html = msg('tc.bar.anchorUser', { p: Math.round(R.tc.anchorRho * 100) }) + btn('tcRhoWhite', 'tc.btn.rhoReset');
-      else if (e.anchorLocal) html = msg('tc.bar.shadow') + btn('tcNoShadow', 'tc.btn.noShadow') + btn('tcPickPaper', 'tc.btn.pickWhite');
-      else if (R.tc.shadow === 'off' && e.shadowSuspect) html = msg('tc.bar.shadowOff') + btn('tcShadowAuto', 'tc.btn.shadowAuto');
-      else if (e.anchor && e.anchor.at) html = msg(e.anchor.neutral ? 'tc.bar.anchor' : 'tc.bar.anchorBright') + btn('tcNotWhite', 'tc.btn.notWhite');
+      return step(R.tc.autoPick ? 'tc.bar.looking' : key, { n: pk.pts.length }, [['undo', 'tc.btn.undo'], ['cancel', 'tc.btn.cancel']]);
     }
+    if (R.tc.chart && R.kind !== 'camera') return step(R.tc.chart.auto ? 'tc.bar.chartAuto' : 'tc.bar.chart', { e: R.tc.chart.residual.toFixed(1) }, [['done', 'tc.btn.done', true]]);
+    if (h && h.retVer === R.retVer && h.kind === R.kind) return step('tc.bar.held', { src: t('tc.tag.' + h.est.source) }, [['again', 'tc.btn.again'], ['live', 'tc.btn.live']]);
+    if (R.tc.anchorMenu) return step('tc.bar.anchorAsk', null, [['rhoLight', 'tc.btn.rhoLight'], ['rhoMid', 'tc.btn.rhoMid'], ['rhoWhite', 'tc.btn.rhoWhite'], ['rhoCancel', 'tc.btn.cancel']]);
+    // sources the user chose that need an action of their own
+    if (!lc && S.tc.src === 'torch') { const ok = torchState().ok; return step(ok ? 'tc.bar.torch' : 'tc.bar.torchNo', null, ok ? [['measure', 'tc.btn.measure', true]] : []); }
+    if (!lc && S.tc.src === 'chart') return step('tc.bar.chartStart', null, [['pick', 'tc.btn.pick', true]]);
+    if (!lc && S.tc.src === 'paper' && !paperUsable(R.tc.stats) && !R.tc.paperAt) return step('tc.bar.paperMissing', null, [['pickPaper', 'tc.btn.pickPaper', true]]);
   }
-  bar.innerHTML = html;
-  bar.hidden = !html;
-  const on = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener('click', fn); };
-  const setRho = (v) => { R.tc.anchorRho = v; R.tc.anchorMenu = false; R.smooth = null; R.shownKey = null; syncTCBar(); syncGuide(); updateGpuTC(); requestAnalysis(); };
-  on('tcUndo', undoChartTap); on('tcCancel', cancelChartPick);
-  on('tcDone', () => { clearTCHold(); resumeLive(); syncTCBar(); });
-  on('tcAgain', measureTorch); on('tcMeasure', measureTorch);
-  on('tcLive', () => { R.tc.held = null; R.smooth = null; R.shownKey = null; syncTCBar(); requestAnalysis(); });
-  on('tcPick', () => startChartPick('measure'));
-  on('tcCancelPaper', () => { R.tc.paperPick = false; syncTCBar(); });
-  on('tcPickPaper', startPaperPick); on('tcPaperAuto', clearPaperAt);
-  on('tcNotWhite', () => { R.tc.anchorMenu = true; syncTCBar(); });
-  on('tcRhoLight', () => setRho(0.6)); on('tcRhoMid', () => setRho(0.35)); on('tcRhoWhite', () => setRho(null));
-  on('tcRhoCancel', () => { R.tc.anchorMenu = false; syncTCBar(); });
-  on('tcNoShadow', () => { R.tc.shadow = 'off'; R.smooth = null; syncTCBar(); syncGuide(); requestAnalysis(); });
-  on('tcShadowAuto', () => { R.tc.shadow = 'auto'; R.smooth = null; syncTCBar(); syncGuide(); requestAnalysis(); });
-  on('tcSaveLens', saveLiveChartCalibration);
+  if (hintClosed()) return { kind: null };
+  return { kind: 'hint', line: guideContent().line, acts: hintActs() };
+}
+
+/** The one optional action that goes with the current hint (camera only, paper, chart in view). */
+function hintActs() {
+  if (!tcOn() || S.mode !== 'identify') return [];
+  const e = R.tc.last, lc = activeChart();
+  if (lc) return R.kind === 'camera' && (lc.kind === 'cc24' || S.tc.printRef) && lc.residual <= 3 ? [['saveLens', 'tc.btn.saveLens']] : [];
+  if (!e) return [];
+  if (e.source === 'paper') return [[R.tc.paperAt ? 'paperAuto' : 'pickPaper', R.tc.paperAt ? 'tc.btn.paperAuto' : 'tc.btn.pickPaper']];
+  if (e.source !== 'camera') return [];
+  if (R.tc.anchorRho) return [['rhoWhite', 'tc.btn.rhoReset']];
+  if (e.anchorLocal) return [['noShadow', 'tc.btn.noShadow']];
+  if (R.tc.shadow === 'off' && e.shadowSuspect) return [['shadowAuto', 'tc.btn.shadowAuto']];
+  return e.anchor && e.anchor.at ? [['notWhite', 'tc.btn.notWhite']] : [];
+}
+
+const actBtn = ([act, key, primary], vars) => `<button class="act-btn${primary ? ' primary-sm' : ''}" data-act="${act}">${esc(t(key, vars))}</button>`;
+
+function syncHint() {
+  const el = $('hint');
+  if (!el) return;
+  const st = hintState();
+  const show = !!st.kind && !wbOpen();
+  el.hidden = !show;
+  if (show) {
+    el.classList.toggle('step', st.kind === 'step');
+    if ($('hintLine').textContent !== st.line) $('hintLine').textContent = st.line;
+    const html = st.acts.map((a) => actBtn(a)).join('');
+    if ($('hintActions').dataset.html !== html) { $('hintActions').innerHTML = html; $('hintActions').dataset.html = html; }
+    $('hintClose').hidden = st.kind !== 'hint';
+  }
+  if (show !== R.tc.hintShown) { R.tc.hintShown = show; requestAnimationFrame(layout); }
+  syncInfo();
   requestAnimationFrame(placeFloating);
+}
+function closeHint() {
+  (S.hintsOff ||= {})[hintKey()] = true; save();
+  syncHint(); drawOverlay();
+  if (!S.hintTipShown) { S.hintTipShown = true; save(); toast(t('hint.closedTip'), 4200); }
+}
+function resetHints() { S.hintsOff = {}; S.hintTipShown = false; S.tipsShown = false; save(); syncHint(); drawOverlay(); toast(t('settings.hintsDone')); }
+// old names, used all over
+function syncTCBar() { syncHint(); }
+function syncGuide() { syncHint(); }
+
+/** Explanation sheet: the current line, what can be adjusted, the principle, the numbers, tips. */
+function openInfo() { $('toast').classList.remove('show'); $('infoSheet').hidden = false; R.tc.infoAt = 0; syncInfo(true); }
+function closeInfo() { $('infoSheet').hidden = true; }
+function infoActs() {
+  const acts = [];
+  if (!tcOn()) return acts;
+  const e = R.tc.last, lc = activeChart();
+  if (S.mode === 'identify' && e && e.source === 'camera' && e.anchor) {
+    acts.push({ label: 'info.adj.anchor', btns: [['rhoWhite', 'tc.btn.rhoWhite', !R.tc.anchorRho], ['rhoLight', 'tc.btn.rhoLight', R.tc.anchorRho === 0.6], ['rhoMid', 'tc.btn.rhoMid', R.tc.anchorRho === 0.35]] });
+    if (e.shadowSuspect || R.tc.shadow === 'off') acts.push({ label: 'info.adj.shadow', btns: [['shadowAuto', 'tc.btn.shadowAuto', R.tc.shadow !== 'off'], ['noShadow', 'tc.btn.noShadow', R.tc.shadow === 'off']] });
+  }
+  if (S.mode === 'identify' && (S.tc.src === 'auto' || S.tc.src === 'paper' || S.tc.src === 'torch')) {
+    acts.push({ label: 'info.adj.paper', btns: R.tc.paperAt ? [['paperAuto', 'tc.btn.paperAuto'], ['pickPaper', 'tc.btn.pickPaper']] : [['pickPaper', 'tc.btn.pickPaper']] });
+  }
+  if (lc && R.kind === 'camera' && (lc.kind === 'cc24' || S.tc.printRef) && lc.residual <= 3) acts.push({ label: 'info.adj.lens', btns: [['saveLens', 'tc.btn.saveLens']] });
+  if (S.mode === 'identify' && S.tc.src === 'torch' && torchState().ok) acts.push({ label: 'info.adj.torch', btns: [['measure', 'tc.btn.measure']] });
+  acts.push({ label: 'info.adj.more', btns: [['light', 'info.btn.light'], ['validate', 'tc.btn.validate']] });
+  return acts;
+}
+function syncInfo(force = false) {
+  const sh = $('infoSheet');
+  if (!sh || sh.hidden) return;
+  // the numbers change every frame: redraw at most once a second, and keep the scroll position
+  const now = performance.now();
+  if (!force && now - (R.tc.infoAt || 0) < 1000) return;
+  R.tc.infoAt = now;
+  const { line, more } = guideContent();
+  $('infoLine').textContent = line;
+  const acts = infoActs().map((g) => `<div class="info-act"><div class="info-act-label">${esc(t(g.label))}</div><div class="info-act-btns">${g.btns.map(([a, k, on]) => `<button class="act-btn${on ? ' on' : ''}" data-act="${a}">${esc(t(k))}</button>`).join('')}</div></div>`).join('');
+  if ($('infoActions').dataset.html !== acts) { $('infoActions').innerHTML = acts; $('infoActions').dataset.html = acts; }
+  const body = $('infoBody');
+  if (body.dataset.html !== more) { const top = sh.querySelector('.sheet-inner').scrollTop; body.innerHTML = more; body.dataset.html = more; sh.querySelector('.sheet-inner').scrollTop = top; }
 }
 
 /** A chart seen in the live picture, with low error: keep it as this lens's calibration. */
@@ -1150,7 +1248,7 @@ function syncTCStatus() {
   el.textContent = parts.join('');
 }
 
-// ---------------- guide: one line that always says what is measured and why ----------------
+// ---------------- what the hint line and the explanation sheet say ----------------
 const pct = (v) => Math.round((Math.exp(v) - 1) * 100);
 /** {line, more} for the current state. `more` is HTML: the principle, the numbers in use, tips. */
 function guideContent() {
@@ -1214,31 +1312,9 @@ function guideContent() {
   }
   if (R.kind === 'photo') { line += t('g.photo'); facts.push(li('g.f.photo')); }
   const more = H('g.h.how') + principle + (facts.length ? H('g.h.now') + `<ul>${facts.join('')}</ul>` : '')
-    + H('g.h.tips') + tips + H('g.h.why') + P('g.why') + `<p class="guide-links"><button id="guideVal" class="tc-btn">${esc(t('tc.btn.validate'))}</button></p>`;
+    + H('g.h.tips') + tips + H('g.h.why') + P('g.why');
   return { line, more };
 }
-function syncGuide() {
-  const g = $('guide');
-  if (!g) return;
-  g.hidden = !R.source;
-  if (g.hidden) return;
-  const { line, more } = guideContent();
-  if ($('guideLine').textContent !== line) $('guideLine').textContent = line;
-  const open = R.tc.guideOpen;
-  $('guideHead').setAttribute('aria-expanded', String(open));
-  $('guideMore').hidden = !open;
-  g.classList.toggle('open', open);
-  // the numbers change every frame: redraw the open panel at most once a second (keeps its scroll)
-  const now = performance.now(), el = $('guideMore');
-  if (open && el.dataset.html !== more && (el.dataset.line !== line || !el.dataset.html || now - (R.tc.guideAt || 0) > 1000)) {
-    R.tc.guideAt = now;
-    const top = el.scrollTop;
-    el.innerHTML = more; el.dataset.html = more; el.dataset.line = line; el.scrollTop = top;
-    const v = document.getElementById('guideVal');
-    if (v) { v.hidden = !tcOn(); v.addEventListener('click', () => { R.tc.guideOpen = false; syncGuide(); startValidation(); }); }
-  }
-}
-
 // ---------------- validation on this phone (ColorChecker, results stay on the phone) ----------------
 const VAL_KEY = 'cvh.validation.v1';
 function loadRuns() { try { return JSON.parse(localStorage.getItem(VAL_KEY) || '[]'); } catch { return []; } }
@@ -1792,6 +1868,7 @@ function syncSettingsUI() {
   document.querySelectorAll('#retSize button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.size === S.retSize)));
   $('optBilingual').checked = S.bilingual; $('optOutline').checked = S.outline; $('optDim').checked = S.dim;
   $('optValues').checked = S.values; $('optAutoSpeak').checked = S.autoSpeak;
+  document.querySelectorAll('#textSizeSeg button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.size === S.textSize)));
 }
 
 function syncWBUI() {
@@ -1905,7 +1982,26 @@ function bind() {
 
   $('sceneReal').addEventListener('click', () => setScene('real'));
   $('sceneScreen').addEventListener('click', () => setScene('screen'));
-  $('guideHead').addEventListener('click', () => { R.tc.guideOpen = !R.tc.guideOpen; syncGuide(); requestAnimationFrame(placeFloating); });
+  // hint strip, explanation sheet, buttons with data-act (strip and sheet)
+  $('hintText').addEventListener('click', openInfo);
+  $('hintClose').addEventListener('click', closeHint);
+  $('btnInfoClose').addEventListener('click', closeInfo);
+  $('infoSheet').addEventListener('click', (e) => { if (e.target.id === 'infoSheet') closeInfo(); });
+  $('btnCpInfo').addEventListener('click', openInfo);
+  // fade the bottom edge of the correction panel body while there is more to scroll to
+  const cpBody = document.querySelector('#correctPanel .cp-body');
+  const cpFade = () => cpBody.classList.toggle('more', cpBody.scrollHeight - cpBody.scrollTop - cpBody.clientHeight > 4);
+  cpBody.addEventListener('scroll', cpFade, { passive: true });
+  if (window.ResizeObserver) { const ro = new ResizeObserver(cpFade); ro.observe(cpBody); for (const c of cpBody.children) ro.observe(c); }
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest && e.target.closest('[data-act]');
+    if (b && ACT[b.dataset.act]) { ACT[b.dataset.act](); return; }
+    if (e.target.closest && e.target.closest('#colorStatus')) openInfo();
+  });
+  // display settings
+  document.querySelectorAll('#textSizeSeg button').forEach((b) => b.addEventListener('click', () => setTextSize(b.dataset.size)));
+  $('btnLangSet').addEventListener('click', () => setLanguage(getLang() === 'zh' ? 'en' : 'zh'));
+  $('btnHintsReset').addEventListener('click', resetHints);
   $('photoReal').addEventListener('click', () => { $('photoAsk').hidden = true; R.tc.photoReal = true; toast(t('photo.realDone'), 3500); syncGuide(); requestAnalysis(); });
   $('photoScreen').addEventListener('click', () => { $('photoAsk').hidden = true; setScene('screen'); toast(t('photo.screenDone'), 3500); });
   $('btnValClose').addEventListener('click', () => { $('valSheet').hidden = true; });
@@ -1992,6 +2088,7 @@ function bind() {
   });
 
   // correction panel
+  $('methodDesc').addEventListener('click', () => $('methodDesc').classList.toggle('open'));
   $('cpToggle').addEventListener('click', () => { S.cpCollapsed = !S.cpCollapsed; save(); syncCorrectUI(); updateZoomChips(); });
   document.querySelectorAll('#typeSeg button').forEach((b) => b.addEventListener('click', () => { S.cvd.type = b.dataset.type; save(); syncCorrectUI(); applyCorrection(); }));
   document.querySelectorAll('#methodChips button').forEach((b) => b.addEventListener('click', () => { S.cvd.method = b.dataset.method; save(); syncCorrectUI(); applyCorrection(); }));
@@ -2100,6 +2197,7 @@ function bindGestures() {
 
 // ---------------- boot ----------------
 async function boot() {
+  applyTextSize();
   setLang(S.lang);
   applyI18n();
   renderReticle();

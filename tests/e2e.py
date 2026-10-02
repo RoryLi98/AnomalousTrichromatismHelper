@@ -78,7 +78,7 @@ with sync_playwright() as p:
     vx, vy = scene_to_view(360, 640)
     page.evaluate(f"window.__cvh.setReticle({vx}, {vy})")
     page.click('#setSeg button[data-set=detailed]')
-    page.click('#btnLang')
+    page.click('#btnSettings'); page.click('#btnLangSet'); page.click('#btnSettingsClose')  # language lives in Settings on phones
     page.wait_for_timeout(800)
     results['detailed_en'] = state(page)
     page.screenshot(path=f'{OUT}/04_detailed_en.png')
@@ -93,7 +93,7 @@ with sync_playwright() as p:
     page.screenshot(path=f'{OUT}/06_dim.png')
 
     # correction mode
-    page.click('#btnLang')  # back to zh
+    page.click('#btnSettings'); page.click('#btnLangSet'); page.click('#btnSettingsClose')  # back to zh
     page.click('#modeCorrect')
     page.wait_for_timeout(700)
     page.screenshot(path=f'{OUT}/07_correct.png')
