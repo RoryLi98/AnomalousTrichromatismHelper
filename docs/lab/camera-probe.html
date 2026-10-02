@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>相机能力检测 · Camera probe</title>
+<style>
+  :root { color-scheme: light dark; --bg: #fafaf8; --fg: #161616; --muted: #5d5c58; --line: #dddcd6; --ok: #1a7f37; --bad: #b42318; --warn: #9a6700; --card: #ffffff; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #161616; --fg: #f2f2f0; --muted: #a9a8a2; --line: #383835; --ok: #4ac26b; --bad: #ff7b72; --warn: #d4a72c; --card: #1f1f1e; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, "PingFang SC", "Noto Sans CJK SC", sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 16px 16px 48px; }
+  h1 { font-size: 20px; margin: 4px 0 4px; }
+  p { margin: 6px 0; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 12px 0; }
+  select, button { font: inherit; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--fg); }
+  button.primary { background: #1e63d6; color: #fff; border-color: #1e63d6; }
+  button:disabled { opacity: .5; }
+  video { width: 100%; max-height: 42vh; object-fit: contain; background: #000; border-radius: 12px; }
+  .aim { position: relative; }
+  .aim::after { content: ""; position: absolute; left: 30%; top: 30%; width: 40%; height: 40%; border: 2px dashed rgba(255,255,255,.7); border-radius: 8px; pointer-events: none; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 14px; }
+  td, th { border-bottom: 1px solid var(--line); padding: 7px 6px; text-align: left; vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 13px; }
+  td:nth-child(2), th:nth-child(2) { white-space: nowrap; }
+  td:first-child { width: 30%; }
+  .ok { color: var(--ok); font-weight: 600; } .bad { color: var(--bad); font-weight: 600; } .na { color: var(--muted); } .warn { color: var(--warn); font-weight: 600; }
+  #log { font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px; max-height: 220px; overflow: auto; }
+  textarea { width: 100%; height: 160px; font: 12px ui-monospace, Menlo, monospace; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--fg); padding: 8px; }
+  .verdict { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin: 10px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>相机能力检测</h1>
+  <p class="muted">检查这台手机的浏览器能不能开手电、锁定曝光、锁定白平衡，这决定了「真色」测量能用哪些模式。所有结果只显示在本机，不会上传。</p>
+  <p class="muted">建议：在<strong>不太亮的房间</strong>里，把镜头对着 20–40 cm 外的一个<strong>不动</strong>的物体（虚线框内），检测过程中手机别动，约 20 秒。</p>
+  <div class="row">
+    <select id="cam" disabled><option>先点「开始检测」授权摄像头</option></select>
+    <button id="start" class="primary">开始检测</button>
+  </div>
+  <div class="aim"><video id="v" playsinline muted autoplay></video></div>
+  <div id="verdict"></div>
+  <table id="res"><thead><tr><th>项目</th><th>结果</th><th>说明</th></tr></thead><tbody></tbody></table>
+  <details><summary class="muted">详细记录</summary><div id="log"></div></details>
+  <p class="muted" style="margin-top:14px">完整结果（JSON，可复制或保存到本机）：</p>
+  <textarea id="json" readonly></textarea>
+  <div class="row"><button id="copy" disabled>复制结果</button><button id="save" disabled>保存为文件</button></div>
+</main>
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const video = $('v');
+const cv = document.createElement('canvas'); cv.width = 96; cv.height = 72;
+const cx = cv.getContext('2d', { willReadFrequently: true });
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const lin = (v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+const LIN = new Float32Array(256).map((_, i) => lin(i));
+let stream = null, track = null;
+const out = { when: new Date().toISOString(), ua: navigator.userAgent, tests: {} };
+const rows = [];
+
+function log(...a) { const s = a.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(' '); $('log').textContent += s + '\n'; }
+function row(name, status, note) {
+  rows.push({ name, status, note });
+  const cls = { ok: 'ok', bad: 'bad', na: 'na', warn: 'warn' }[status];
+  const label = { ok: '可用', bad: '不可用', na: '不支持', warn: '部分可用' }[status];
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td>${name}</td><td class="${cls}">${label}</td><td>${note}</td>`;
+  $('res').querySelector('tbody').appendChild(tr);
+}
+
+/** Mean linear RGB of the centre 40 % of the frame, averaged over n frames. */
+async function grab(n = 5) {
+  let r = 0, g = 0, b = 0, sharp = 0, clip = 0;
+  for (let k = 0; k < n; k++) {
+    cx.drawImage(video, 0, 0, cv.width, cv.height);
+    const d = cx.getImageData(Math.round(cv.width * 0.3), Math.round(cv.height * 0.3), Math.round(cv.width * 0.4), Math.round(cv.height * 0.4));
+    const w = d.width, h = d.height, px = d.data;
+    let sr = 0, sg = 0, sb = 0, lap = 0, c = 0;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      sr += LIN[px[i]]; sg += LIN[px[i + 1]]; sb += LIN[px[i + 2]];
+      if (px[i] > 250 || px[i + 1] > 250 || px[i + 2] > 250) c++;
+      if (x > 0 && y > 0 && x < w - 1 && y < h - 1) {
+        const L = (j) => px[j] * 0.3 + px[j + 1] * 0.59 + px[j + 2] * 0.11;
+        const v = 4 * L(i) - L(i - 4) - L(i + 4) - L(i - w * 4) - L(i + w * 4);
+        lap += v * v;
+      }
+    }
+    const m = w * h;
+    r += sr / m; g += sg / m; b += sb / m; sharp += lap / m; clip += c / m;
+    await sleep(40);
+  }
+  r /= n; g /= n; b /= n;
+  return { r, g, b, Y: 0.2126 * r + 0.7152 * g + 0.0722 * b, sharp: sharp / n, clip: clip / n };
+}
+
+/** Wait until the centre brightness is stable (3 samples within 2 %), return elapsed ms. */
+async function settle(timeout = 2500) {
+  const t0 = performance.now();
+  let last = (await grab(1)).Y, stable = 0;
+  while (performance.now() - t0 < timeout) {
+    await sleep(90);
+    const y = (await grab(1)).Y;
+    stable = Math.abs(y - last) / Math.max(last, 1e-4) < 0.02 ? stable + 1 : 0;
+    last = y;
+    if (stable >= 3) break;
+  }
+  return Math.round(performance.now() - t0);
+}
+
+async function apply(c) {
+  try { await track.applyConstraints({ advanced: [c] }); return { ok: true }; }
+  catch (e1) {
+    try { await track.applyConstraints(c); return { ok: true, basic: true }; }
+    catch (e2) { return { ok: false, err: `${e2.name}: ${e2.message}` }; }
+  }
+}
+const pick = (o, keys) => Object.fromEntries(keys.filter((k) => o && o[k] !== undefined).map((k) => [k, o[k]]));
+const KEYS = ['torch', 'exposureMode', 'exposureTime', 'exposureCompensation', 'iso', 'whiteBalanceMode', 'colorTemperature',
+  'focusMode', 'focusDistance', 'pointsOfInterest', 'zoom', 'brightness', 'saturation', 'width', 'height', 'frameRate'];
+const f3 = (x) => (Math.round(x * 1000) / 1000).toString();
+
+async function open(deviceId) {
+  if (stream) stream.getTracks().forEach((t) => t.stop());
+  const v = deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { ideal: 'environment' } };
+  stream = await navigator.mediaDevices.getUserMedia({ video: { ...v, width: { ideal: 1280 }, height: { ideal: 960 } }, audio: false });
+  track = stream.getVideoTracks()[0];
+  video.srcObject = stream;
+  await new Promise((r) => (video.readyState >= 2 ? r() : (video.onloadeddata = r)));
+  await sleep(1500); // capabilities are only filled in once the camera is streaming
+}
+
+async function listCams(currentId) {
+  const devs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput');
+  const sel = $('cam');
+  sel.innerHTML = devs.map((d, i) => `<option value="${d.deviceId}">${d.label || '摄像头 ' + (i + 1)}</option>`).join('');
+  if (currentId) sel.value = currentId;
+  sel.disabled = false;
+}
+
+async function run() {
+  $('start').disabled = true; $('res').querySelector('tbody').innerHTML = ''; rows.length = 0; $('log').textContent = ''; $('verdict').innerHTML = '';
+  try {
+    await open($('cam').disabled ? null : $('cam').value);
+    await listCams(track.getSettings().deviceId);
+  } catch (e) { row('打开摄像头', 'bad', `${e.name}: ${e.message}`); $('start').disabled = false; return; }
+
+  const caps = track.getCapabilities ? track.getCapabilities() : {};
+  const sup = navigator.mediaDevices.getSupportedConstraints();
+  out.camera = track.label;
+  out.supported = KEYS.filter((k) => sup[k]);
+  out.capabilities = pick(caps, KEYS);
+  out.settings = pick(track.getSettings(), KEYS);
+  try { const ic = new ImageCapture(track); out.photoCapabilities = await ic.getPhotoCapabilities(); } catch (e) { out.photoCapabilities = `${e.name}`; }
+  log('caps', out.capabilities); log('settings', out.settings);
+  row('浏览器识别的控制项', out.supported.length ? 'ok' : 'na', out.supported.join('、') || '一个都没有（Firefox 属于这种情况）');
+
+  const T = out.tests;
+  const base = await grab(8);
+  T.base = base;
+  if (base.clip > 0.2) row('画面', 'warn', '框内过亮（有大片过曝），结果可能不准，换个暗一点的物体');
+
+  // 1. torch
+  if (caps.torch) {
+    const off0 = await grab(6);
+    const a = await apply({ torch: true });
+    const ms = await settle();
+    const on = await grab(6);
+    await apply({ torch: false }); const ms2 = await settle(); const off1 = await grab(6);
+    const ratio = on.Y / Math.max(off0.Y, 1e-5);
+    T.torch = { applied: a, ratio, settleOnMs: ms, settleOffMs: ms2, on, off0, off1 };
+    log('torch', T.torch);
+    if (!a.ok) row('手电 torch', 'bad', a.err);
+    else row('手电 torch', ratio > 1.15 ? 'ok' : 'warn', `开灯后框内变亮 ×${f3(ratio)}；稳定约 ${ms} ms（关灯 ${ms2} ms）${ratio > 1.15 ? '' : '。变化很小：环境太亮或物体太远'}`);
+  } else row('手电 torch', 'na', '这个镜头没有报告手电（换主摄再试；Firefox 不支持）');
+
+  // 2. manual exposure: set our own exposure time and ISO, then halve the time; brightness should halve
+  let manualOK = false;
+  if (Array.isArray(caps.exposureMode) && caps.exposureMode.includes('manual') && caps.exposureTime) {
+    const s0 = track.getSettings();
+    const tmin = caps.exposureTime.min, tmax = caps.exposureTime.max;
+    let t = s0.exposureTime && s0.exposureTime > 0 ? s0.exposureTime : Math.min(tmax, 333);
+    t = Math.max(tmin * 2, Math.min(tmax, t));
+    const iso = caps.iso ? Math.round(Math.max(caps.iso.min, Math.min(caps.iso.max, s0.iso || 400))) : undefined;
+    const c = { exposureMode: 'manual', exposureTime: t }; if (iso) c.iso = iso;
+    const a = await apply(c); await sleep(700);
+    const y1 = await grab(6);
+    const a2 = await apply({ exposureMode: 'manual', exposureTime: t / 2, ...(iso ? { iso } : {}) }); await sleep(700);
+    const y2 = await grab(6);
+    const r = y2.Y / Math.max(y1.Y, 1e-5);
+    manualOK = a.ok && a2.ok && r > 0.3 && r < 0.75 && y1.clip < 0.05;
+    T.manualExposure = { applied: [a, a2], exposureTime: t, iso, ratio: r, y1, y2, settingsAfter: pick(track.getSettings(), ['exposureMode', 'exposureTime', 'iso']) };
+    log('manual exposure', T.manualExposure);
+    if (!a.ok) row('手动曝光', 'bad', a.err);
+    else row('手动曝光', manualOK ? 'ok' : 'bad', manualOK
+      ? `曝光时间减半，亮度变为 ×${f3(r)}（应接近 0.5），说明真的锁住了。时间 ${t}×100µs${iso ? '，ISO ' + iso : ''}`
+      : `设置被接受，但曝光时间减半后亮度变为 ×${f3(r)}（应接近 0.5），可能被相机忽略${y1.clip >= 0.05 ? '（画面过曝，换暗一点的物体再测）' : ''}`);
+    // 3. does the lock hold when the torch comes on?
+    if (manualOK && caps.torch) {
+      await apply({ exposureMode: 'manual', exposureTime: t / 2, ...(iso ? { iso } : {}) }); await sleep(500);
+      const offL = await grab(6);
+      await apply({ torch: true }); await sleep(900);
+      const onL1 = await grab(6); await sleep(1500); const onL2 = await grab(6);
+      await apply({ torch: false }); await sleep(600);
+      await apply({ exposureMode: 'continuous' }); await sleep(1200);
+      const offA = await grab(6);
+      await apply({ torch: true }); await settle(); await sleep(800);
+      const onA = await grab(6);
+      await apply({ torch: false }); await settle();
+      const rl = onL1.Y / Math.max(offL.Y, 1e-5), drift = onL2.Y / Math.max(onL1.Y, 1e-5), ra = onA.Y / Math.max(offA.Y, 1e-5);
+      T.lockWithTorch = { lockedRatio: rl, lockedDrift: drift, autoRatio: ra };
+      log('lock with torch', T.lockWithTorch);
+      const good = rl > 1.15 && Math.abs(drift - 1) < 0.08;
+      row('锁曝光 + 手电', good ? 'ok' : 'warn', `锁定时开手电变亮 ×${f3(rl)}，1.5 秒后仍为 ×${f3(rl * drift)}；不锁时只变亮 ×${f3(ra)}（自动曝光把亮度拉回去了）`);
+    }
+    await apply({ exposureMode: 'continuous' });
+  } else row('手动曝光', 'na', '浏览器没有提供 exposureMode: manual（iPhone Safari、Firefox 都是这样）');
+
+  // 4. white balance: colour-temperature presets and lock
+  if (caps.colorTemperature && Array.isArray(caps.whiteBalanceMode) && caps.whiteBalanceMode.includes('manual')) {
+    const a = await apply({ whiteBalanceMode: 'manual', colorTemperature: caps.colorTemperature.min }); await sleep(900);
+    const w1 = await grab(6);
+    const a2 = await apply({ whiteBalanceMode: 'manual', colorTemperature: caps.colorTemperature.max }); await sleep(900);
+    const w2 = await grab(6);
+    const rb1 = w1.r / Math.max(w1.b, 1e-5), rb2 = w2.r / Math.max(w2.b, 1e-5);
+    const ch = Math.abs(Math.log(rb2 / rb1));
+    T.whiteBalancePreset = { applied: [a, a2], min: caps.colorTemperature.min, max: caps.colorTemperature.max, rb1, rb2 };
+    log('wb preset', T.whiteBalancePreset);
+    row('白平衡预设（色温）', a.ok && ch > 0.15 ? 'ok' : 'bad', a.ok ? `${caps.colorTemperature.min} K → ${caps.colorTemperature.max} K，红/蓝比 ${f3(rb1)} → ${f3(rb2)}${ch > 0.15 ? '' : '（几乎没变，可能被忽略）'}` : a.err);
+    await apply({ whiteBalanceMode: 'continuous' }); await sleep(600);
+  } else row('白平衡预设（色温）', 'na', '没有 colorTemperature');
+  if (Array.isArray(caps.whiteBalanceMode) && caps.whiteBalanceMode.includes('manual')) {
+    const a = await apply({ whiteBalanceMode: 'manual' });
+    T.whiteBalanceLock = a;
+    row('白平衡锁定', a.ok ? 'ok' : 'bad', a.ok ? '接受了 whiteBalanceMode: manual（锁在当前状态）。注意：Chrome 之后读出来的仍是 continuous，这是已知的显示问题' : a.err);
+    await apply({ whiteBalanceMode: 'continuous' });
+  } else row('白平衡锁定', 'na', `可选模式：${(caps.whiteBalanceMode || []).join('、') || '无'}`);
+
+  // 5. metering point
+  if (sup.pointsOfInterest) {
+    const a = await apply({ pointsOfInterest: [{ x: 0.5, y: 0.5 }] });
+    T.pointsOfInterest = a;
+    row('测光点 pointsOfInterest', a.ok ? 'ok' : 'bad', a.ok ? '可以把测光/对焦/白平衡区域设到准星处' : a.err);
+  } else row('测光点 pointsOfInterest', 'na', '');
+
+  // 6. focus distance (for estimating distance in torch mode)
+  if (Array.isArray(caps.focusMode) && caps.focusMode.includes('manual') && caps.focusDistance) {
+    const reportedAuto = track.getSettings().focusDistance;
+    const near = Math.max(caps.focusDistance.min, 0.1), far = caps.focusDistance.max;
+    const a = await apply({ focusMode: 'manual', focusDistance: near }); await sleep(900); const s1 = await grab(4);
+    await apply({ focusMode: 'manual', focusDistance: far }); await sleep(900); const s2 = await grab(4);
+    await apply({ focusMode: 'continuous' });
+    const chg = Math.max(s1.sharp, s2.sharp) / Math.max(1e-6, Math.min(s1.sharp, s2.sharp));
+    T.focus = { applied: a, near, far, sharpNear: s1.sharp, sharpFar: s2.sharp, reportedInAuto: reportedAuto };
+    row('手动对焦距离', a.ok && chg > 1.3 ? 'ok' : 'warn', a.ok ? `近 ${near} m / 远 ${far} m 清晰度差 ×${f3(chg)}；自动对焦时读到的距离 ${reportedAuto ?? '无'}（Chrome 读的是设定值，不是实际位置）` : a.err);
+  } else row('手动对焦距离', 'na', '');
+
+  // verdict
+  const torchOK = T.torch && T.torch.applied.ok;
+  const v = [];
+  if (torchOK && manualOK) v.push('<span class="ok">③ 手电差分：可用</span>（能开手电，也能锁住曝光）');
+  else if (torchOK) v.push('<span class="warn">③ 手电差分：效果有限</span>（能开手电，但锁不住曝光；暗处容易过曝，建议用白纸或色卡）');
+  else v.push('<span class="bad">③ 手电差分：不可用</span>（这个镜头/浏览器开不了手电）');
+  v.push('<span class="ok">① 只用摄像头、② 白纸、④ 色卡：都可用</span>（不依赖这些控制）');
+  $('verdict').innerHTML = `<div class="verdict">${v.join('<br>')}</div>`;
+  out.rows = rows;
+  out.verdict = { torch: !!torchOK, manualExposure: manualOK };
+  $('json').value = JSON.stringify(out, null, 1);
+  $('copy').disabled = false; $('save').disabled = false; $('start').disabled = false; $('start').textContent = '再测一次';
+  try { await apply({ torch: false }); } catch {}
+}
+
+$('start').onclick = () => run().catch((e) => { log('error', e.name, e.message); row('检测中断', 'bad', `${e.name}: ${e.message}`); $('start').disabled = false; });
+$('cam').onchange = () => { $('start').textContent = '用这个镜头检测'; };
+$('copy').onclick = async () => { try { await navigator.clipboard.writeText($('json').value); $('copy').textContent = '已复制'; } catch { $('json').select(); document.execCommand('copy'); } };
+$('save').onclick = () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([$('json').value], { type: 'application/json' }));
+  a.download = `camera-probe-${Date.now()}.json`; a.click();
+};
+</script>
+</body>
+</html>

@@ -32,6 +32,17 @@ uniform vec3 uEnh;          // axis (0 = red-green lost, 1 = blue-yellow lost), 
 uniform vec3 uWB;           // white-balance gains (linear)
 uniform float uPreview;     // 1 = show through simulated CVD eyes
 uniform float uSplit;       // canvas x (device px) of the compare divider, <0 disables
+// true colour (truecolor.js gpuParams): instead of the white balance, every pixel goes through the
+// current estimate of the scene's light: glare, gains, optional tone curve + root-polynomial, saturation
+uniform float uTC;
+uniform vec3 uTcGlare;
+uniform vec3 uTcGain;
+uniform float uTcProf;
+uniform vec3 uTcX[8];
+uniform vec3 uTcY[8];
+uniform mat3 uTcMa;         // r, g, b terms
+uniform mat3 uTcMb;         // sqrt(rg), sqrt(gb), sqrt(rb) terms
+uniform float uTcSat;
 
 vec3 toLin(vec3 c) {
   vec3 lo = c / 12.92;
@@ -65,6 +76,30 @@ vec3 oklabToLin(vec3 lab) {
     4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
     -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
     -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s);
+}
+
+vec3 lut3(vec3 v) {
+  vec3 done = step(v, uTcX[0]);
+  vec3 res = uTcY[0] * done;
+  for (int i = 1; i < 8; i++) {
+    vec3 x0 = uTcX[i - 1], x1 = uTcX[i], y0 = uTcY[i - 1], y1 = uTcY[i];
+    vec3 inSeg = (1.0 - done) * step(v, x1);
+    res += inSeg * (y0 + (v - x0) / max(x1 - x0, vec3(1e-6)) * (y1 - y0));
+    done += inSeg;
+  }
+  vec3 ext = uTcY[7] + (v - uTcX[7]) / max(uTcX[7] - uTcX[6], vec3(1e-6)) * (uTcY[7] - uTcY[6]);
+  return res + (1.0 - done) * ext;
+}
+vec3 trueColor(vec3 raw) {
+  vec3 c = max(raw - uTcGlare, 0.0) * uTcGain;
+  if (uTcProf > 0.5) {
+    c = max(lut3(c), 0.0);
+    vec3 q = sqrt(vec3(c.r * c.g, c.g * c.b, c.r * c.b));
+    c = uTcMa * c + uTcMb * q;
+  }
+  float Y = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  c = vec3(Y) + (c - vec3(Y)) / uTcSat;
+  return clamp(c, 0.0, 1.0);
 }
 
 vec3 process(vec3 srgb, vec3 lin) {
@@ -117,11 +152,11 @@ vec3 process(vec3 srgb, vec3 lin) {
 }
 
 void main() {
-  vec3 srgb = texture2D(uTex, vUv).rgb;
-  vec3 lin = min(toLin(srgb) * uWB, vec3(1.0));
-  srgb = toSrgb(lin);
+  vec3 raw = toLin(texture2D(uTex, vUv).rgb);
+  vec3 lin = min(raw * uWB, vec3(1.0));
   bool original = uSplit >= 0.0 && gl_FragCoord.x < uSplit;
-  vec3 outLin = original ? lin : process(srgb, lin);
+  vec3 tl = (uTC > 0.5 && !original) ? trueColor(raw) : lin;
+  vec3 outLin = original ? lin : process(toSrgb(tl), tl);
   if (uPreview > 0.5) outLin = uSim * clamp(outLin, 0.0, 1.0);
   vec3 col = toSrgb(outLin);
   if (uSplit >= 0.0) {
@@ -210,7 +245,8 @@ export class Renderer {
     gl.enableVertexAttribArray(0);
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
     this.u = {};
-    for (const n of ['uTex', 'uCrop', 'uMirror', 'uMethod', 'uSim', 'uInv', 'uErr', 'uStrength', 'uEnh', 'uWB', 'uPreview', 'uSplit']) {
+    for (const n of ['uTex', 'uCrop', 'uMirror', 'uMethod', 'uSim', 'uInv', 'uErr', 'uStrength', 'uEnh', 'uWB', 'uPreview', 'uSplit',
+      'uTC', 'uTcGlare', 'uTcGain', 'uTcProf', 'uTcX', 'uTcY', 'uTcMa', 'uTcMb', 'uTcSat']) {
       this.u[n] = gl.getUniformLocation(prog, n);
     }
     this.tex = gl.createTexture();
@@ -225,6 +261,32 @@ export class Renderer {
     this.setWB([1, 1, 1]);
     this.setSplit(-1);
     this.setPreview(false);
+    this.setTrueColor(null);
+  }
+
+  /** p = truecolor.js gpuParams(...) or null (plain white balance). */
+  setTrueColor(p) {
+    const gl = this.gl, u = this.u;
+    gl.uniform1f(u.uTC, p ? 1 : 0);
+    if (!p) return;
+    gl.uniform3fv(u.uTcGlare, p.glare);
+    gl.uniform3fv(u.uTcGain, p.gain);
+    gl.uniform1f(u.uTcSat, p.sat || 1);
+    const prof = !!(p.luts && p.M);
+    gl.uniform1f(u.uTcProf, prof ? 1 : 0);
+    if (!prof) return;
+    const X = new Float32Array(24), Y = new Float32Array(24);
+    for (let i = 0; i < 8; i++) for (let c = 0; c < 3; c++) {
+      const { xs, ys } = p.luts[c];
+      const k = Math.min(i, xs.length - 1);
+      // fewer than 8 knots: continue the last segment
+      const ext = i - k, dx = xs[k] - xs[Math.max(0, k - 1)], dy = ys[k] - ys[Math.max(0, k - 1)];
+      X[i * 3 + c] = xs[k] + ext * (dx || 1); Y[i * 3 + c] = ys[k] + ext * (dx ? dy : 1);
+    }
+    gl.uniform3fv(u.uTcX, X); gl.uniform3fv(u.uTcY, Y);
+    const M = p.M;
+    gl.uniformMatrix3fv(u.uTcMa, false, colMajor([M[0][0], M[0][1], M[0][2], M[1][0], M[1][1], M[1][2], M[2][0], M[2][1], M[2][2]]));
+    gl.uniformMatrix3fv(u.uTcMb, false, colMajor([M[0][3], M[0][4], M[0][5], M[1][3], M[1][4], M[1][5], M[2][3], M[2][4], M[2][5]]));
   }
 
   /** Where the picture goes inside the canvas, in CSS-style device px (origin top-left). */

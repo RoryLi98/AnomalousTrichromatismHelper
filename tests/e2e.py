@@ -41,8 +41,8 @@ with sync_playwright() as p:
     if page.is_visible('#start'):
         page.click('#btnStart')
     page.wait_for_function("() => window.__cvh && window.__cvh.R.lastNaming", timeout=15000)
-    # this test maps scene coordinates assuming the picture fills the screen
-    page.evaluate("() => { window.__cvh.S.frame = 'fill'; window.__cvh.layout(); }")
+    # picture colours (screen scene); this test maps scene coordinates assuming the picture fills the screen
+    page.evaluate("() => { window.__cvh.setScene('screen'); window.__cvh.S.frame = 'fill'; window.__cvh.layout(); }")
     page.wait_for_timeout(1500)
     results['center'] = state(page)
     page.screenshot(path=f'{OUT}/02_identify_basic.png')

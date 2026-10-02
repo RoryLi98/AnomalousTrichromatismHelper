@@ -47,6 +47,7 @@ with sync_playwright() as p:
     if page.is_visible('#start'):
         page.click('#btnStart', timeout=5000)
     page.wait_for_function("() => window.__cvh && window.__cvh.R.lastNaming && window.__cvh.R.lastRes", timeout=30000)
+    page.evaluate("() => window.__cvh.setScene('screen')")  # picture colours
     settle(page, 4)
     results['video'] = page.evaluate("() => [document.getElementById('video').videoWidth, document.getElementById('video').videoHeight]")
     results['start'] = page.evaluate(STATE)
