@@ -1,10 +1,10 @@
 // Offline cache for the app shell. Bump VERSION when files change.
-const VERSION = 'cvh-v1.5.1';
+const VERSION = 'cvh-v1.5.2';
 const FILES = [
   './', 'index.html', 'manifest.webmanifest', 'css/style.css',
   'js/main.js', 'js/i18n.js', 'js/color.js', 'js/naming.js', 'js/cvd.js', 'js/machado.js',
   'js/segment.js', 'js/gl.js', 'js/camera.js', 'js/selftest.js', 'js/wb.js', 'js/analysis-worker.js', 'js/reticle.js',
-  'js/truecolor.js', 'js/measure.js', 'js/chartdetect.js',
+  'js/truecolor.js', 'js/measure.js', 'js/chartdetect.js', 'js/focus.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png',
 ];
 

@@ -35,7 +35,7 @@ STATE = """() => { const {R} = window.__cvh; const n = R.lastNaming; const tc = 
     status: document.getElementById('colorStatus').textContent + ' · ' + document.getElementById('colorMsgs').textContent,
     bar: document.getElementById('hint').hidden ? '' : document.getElementById('hintLine').textContent + ' ' + document.getElementById('hintActions').textContent,
     guide: document.getElementById('hintLine').textContent, guideShown: !document.getElementById('hint').hidden,
-    gline: window.__cvh.guideContent().line, hintStep: document.getElementById('hint').classList.contains('step'),
+    gline: window.__cvh.guideContent().line, gmore: window.__cvh.guideContent().more, hintStep: document.getElementById('hint').classList.contains('step'),
     chart: R.tc.chart && +R.tc.chart.residual.toFixed(2), live: !!R.tc.liveChart, kind: R.kind, scene: window.__cvh.S.scene,
     toast: document.getElementById('toast').textContent}; }"""
 
@@ -76,9 +76,11 @@ def with_paper(page):
     page.click('#sceneScreen'); settle(page)
     out['picture'] = page.evaluate(STATE)
     page.screenshot(path=f'{OUT}/tc_screen.png')
-    # ---- Real scene, automatic: the chart in view is found and used
+    # ---- Real scene: four ways to measure (no "auto"); normal mode is the default
     page.click('#sceneReal')
-    page.evaluate("() => window.__cvh.setTCSource('auto')")
+    out['sources'] = page.evaluate("() => ({ srcs: [...document.querySelectorAll('#tcSrc button')].map(b => b.dataset.src + ':' + b.textContent), def: window.__cvh.S.tc.src })")
+    # ---- chart: the chart in the live picture is found and used
+    page.evaluate("() => window.__cvh.setTCSource('chart')")
     page.wait_for_function("() => window.__cvh.R.tc.liveChart", timeout=15000); settle(page, 4)
     out['auto'] = page.evaluate(STATE)
     page.screenshot(path=f'{OUT}/tc_auto_chart.png')
@@ -204,6 +206,12 @@ def no_paper(page):
     page.wait_for_function("() => !document.getElementById('photoAsk').hidden", timeout=10000)
     page.click('#photoScreen'); settle(page, 1)
     out['photoScreen'] = page.evaluate(STATE)
+    # a phone that saved the old "auto" source opens in normal mode
+    page.evaluate("() => { const s = JSON.parse(localStorage.getItem('cvh.settings.v1')); s.tc.src = 'auto'; s.scene = 'real'; localStorage.setItem('cvh.settings.v1', JSON.stringify(s)); }")
+    page.reload(); page.wait_for_timeout(1200)
+    if page.is_visible('#start'): page.click('#btnStart')
+    page.wait_for_function("() => window.__cvh && window.__cvh.R.lastNaming", timeout=30000)
+    out['migrated'] = page.evaluate("() => window.__cvh.S.tc.src")
     return out
 
 results = {}
@@ -217,17 +225,18 @@ lum = lambda c: 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
 checks = {
     'screen: picture reads brown': R['picture']['basic'] == 'brown' and R['picture']['scene'] == 'screen',
     'screen: guide explains the screen mode': R['picture']['guideShown'] and '屏幕模式' in R['picture']['guide'],
-    'real auto: chart in view found and used': R['auto']['tc']['src'] == 'chart' and R['auto']['live'] and '色卡' in R['auto']['bar'],
-    'real auto: says orange': R['auto']['basic'] == 'orange',
+    'four sources, normal mode first and default': R['sources']['srcs'] == ['camera:普通模式', 'paper:白纸', 'torch:手电', 'chart:色卡'] and R['sources']['def'] == 'camera',
+    'chart in the live picture found and used': R['auto']['tc']['src'] == 'chart' and R['auto']['live'] and '色卡' in R['auto']['bar'],
+    'chart (live): says orange': R['auto']['basic'] == 'orange',
     'paper: found and says orange': R['paper']['tc']['src'] == 'paper' and R['paper']['paper'] and R['paper']['basic'] == 'orange',
-    'camera only: anchor shown, says orange': R['camera']['tc']['src'] == 'camera' and R['camera']['tc']['anchorAt'] and R['camera']['basic'] == 'orange'
+    'normal mode: anchor shown, says orange, chip says 普通': R['camera']['tc']['src'] == 'camera' and R['camera']['tc']['anchorAt'] and R['camera']['basic'] == 'orange' and R['camera']['status'].startswith('普通')
         and '虚线框' in R['camera']['guide'],
-    'camera only: "light gray" makes it darker': 'anchorUser' in R['gray']['tc']['notes'] and lum(R['gray']['rgb']) < 0.95 * lum(R['camera']['rgb'])
+    'normal mode: "light gray" makes it darker': 'anchorUser' in R['gray']['tc']['notes'] and lum(R['gray']['rgb']) < 0.95 * lum(R['camera']['rgb'])
         and '浅灰' in R['anchorMenu'],
     'hint opens the explanation (principle and numbers)': R['guideMore']['shown'] and '原理' in R['guideMore']['text'] and '现在用到的数据' in R['guideMore']['text'],
     'closed hint stays closed; chip reopens the explanation': R['hintClosed']['hidden'] and R['hintClosed']['saved'].get('real.identify') and R['reopen'],
     'text size setting and hints shown again': R['display']['fs'] == '1.15' and R['display']['name'] > 26 and R['display']['hint'],
-    'freeze averages several frames': R['freeze'] and R['freeze']['frames'] >= 5 and '帧平均' in R['chart']['gline'],
+    'freeze averages several frames (said in the sheet, the hint stays short)': R['freeze'] and R['freeze']['frames'] >= 5 and '帧平均' in R['chart']['gmore'] and '帧平均' not in R['chart']['gline'],
     'chart found on the frozen frame without tapping': R['chartAuto'] and R['chart']['chart'] is not None and R['chart']['chart'] < 4 and R['chart']['kind'] == 'frozen',
     'chart says orange': R['chart']['tc']['src'] == 'chart' and R['chart']['basic'] == 'orange',
     'chart by tapping four corners in any order': R['chartTapped']['residual'] is not None and R['chartTapped']['residual'] < 4 and not R['chartTapped']['auto'],
@@ -246,8 +255,9 @@ checks = {
         and any('"torch":false' in a for a in R['torchVerify']['last']),
     'check-again button offered and works': R['torchVerify']['recheckShown'] and R['recheck']['cleared'] and R['recheck']['hidden'],
     'calibration can be cleared': R['afterReset']['cams'] == 0 and not R['afterReset']['reset'],
-    'camera only without paper says orange': R['cameraNoPaper']['tc']['src'] == 'camera' and R['cameraNoPaper']['basic'] == 'orange',
-    'photo: asked, real photo stays in true colour': R['photoReal']['kind'] == 'photo' and R['photoReal']['scene'] == 'real' and '照片' in R['photoReal']['gline'],
+    'saved "auto" source opens in normal mode': R['migrated'] == 'camera',
+    'normal mode without paper says orange': R['cameraNoPaper']['tc']['src'] == 'camera' and R['cameraNoPaper']['basic'] == 'orange',
+    'photo: asked, real photo stays in true colour': R['photoReal']['kind'] == 'photo' and R['photoReal']['scene'] == 'real' and '照片' in R['photoReal']['gmore'],
     'photo: screenshot switches to the screen scene': R['photoScreen']['scene'] == 'screen' and R['photoScreen']['tc'] is None,
     'no page errors': not errors,
 }

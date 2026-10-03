@@ -16,8 +16,9 @@ import {
 } from './truecolor.js';
 import { findChart } from './chartdetect.js';
 import { measureCaps, verifyManualExposure, torchMeasure } from './measure.js';
+import { focusCaps, distanceFor, sharpnessOf, findFocus, RefocusWatch } from './focus.js';
 
-export const APP_VERSION = '1.5.1';
+export const APP_VERSION = '1.5.2';
 const $ = (id) => document.getElementById(id);
 const app = $('app'), video = $('video'), overlay = $('overlay');
 let view = $('view');
@@ -37,11 +38,15 @@ const DEFAULTS = {
   split: false, preview: false, cpCollapsed: false,
   // scene: real = true colour (现实物体，估计物体本身的颜色) | screen = picture colour (拍屏幕、看图片)
   scene: 'real',
-  // true colour: src = auto | camera | paper | torch | chart; preview = show the true-colour picture in
-  // Identify too; defaultSat = default low-light saturation curve for cameras without a chart calibration
-  tc: { src: 'auto', rho: 0.85, chart: 'cc24', cams: {}, printRef: null, preview: false, defaultSat: false },
+  // true colour: src = camera (普通模式: the white anchor) | paper | torch | chart; preview = show the
+  // true-colour picture in Identify too; defaultSat = default low-light saturation curve for cameras
+  // without a chart calibration
+  tc: { src: 'camera', rho: 0.85, chart: 'cc24', cams: {}, printRef: null, preview: false, defaultSat: false },
   // display: text size m | l | xl; hints closed with × (by "scene.mode"); one-time tips already shown
   textSize: 'm', hintsOff: {}, hintTipShown: false,
+  // focus: lock = focus once at the reticle and keep the lens there (where the browser allows it) |
+  // auto = the camera's own continuous autofocus; focusBad = cameras where locking did not work
+  focus: 'lock', focusBad: {},
 };
 function loadSettings() {
   let saved = null;
@@ -51,6 +56,7 @@ function loadSettings() {
     for (const k of Object.keys(s)) if (k in saved) s[k] = k === 'cvd' || k === 'tc' ? { ...s[k], ...saved[k] } : saved[k];
     if (saved.wbOn && !('wbMode' in saved)) s.wbMode = 'manual'; // v1.0 setting
     if (s.cvd.method === 'daltonize') s.cvd.method = 'auto';      // v1.2: Daltonize was replaced by Balanced
+    if (!['camera', 'paper', 'torch', 'chart'].includes(s.tc.src)) s.tc.src = 'camera'; // v1.5.2: no "auto" source
   }
   return s;
 }
@@ -184,6 +190,7 @@ function layout() {
   placeReticle();
   placeFloating();
   applySplit();
+  fitHint();
   if (changed) { R.newFrame = true; requestAnalysis(); }
 }
 
@@ -368,7 +375,7 @@ function analyze() {
     // look for a colour chart: twice a second on live video, once on a frozen frame or photo
     const now = performance.now();
     const detect = tcOn() && wantRegion && !R.tc.paperPick
-      && (R.tc.pick ? R.tc.autoPick && R.kind !== 'camera' : S.tc.src === 'auto' || S.tc.src === 'chart')
+      && (R.tc.pick ? R.tc.autoPick && R.kind !== 'camera' : S.tc.src === 'chart')
       && (R.kind === 'camera' ? now - R.tc.lastDetect > 500 : !R.tc.detectDone);
     if (detect) { R.tc.lastDetect = now; if (R.kind !== 'camera') R.tc.detectDone = true; }
     const msg = {
@@ -546,6 +553,15 @@ const WARN_SVG = '<svg class="ic ic-s"><use href="#i-warn"/></svg>';
 function setHTML(el, html) { if (el.dataset.html !== html) { el.innerHTML = html; el.dataset.html = html; } }
 function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
+const CONF_DOTS = { high: 3, mid: 2, low: 1 };
+/** The source chip: a short name and, for true colour, three dots (filled = how sure). */
+function chipHTML(text, conf, full) {
+  const n = CONF_DOTS[conf] || 0;
+  const dots = n ? `<span class="conf">${[1, 2, 3].map((k) => `<i class="${k <= n ? 'on' : ''}"></i>`).join('')}</span>` : '';
+  const aria = conf ? t('tc.chip.aria', { src: full || text, conf: t('tc.conf.' + conf) }) : `${full || text} · ${t('info.open')}`;
+  return `<button class="tag-chip" aria-label="${esc(aria)}"><svg class="ic"><use href="#i-info"/></svg><span>${esc(text)}</span>${dots}</button>`;
+}
+
 function updateCard() {
   const naming = R.lastNaming, rgb = R.lastRgb;
   if (!naming || !rgb) return;
@@ -555,33 +571,32 @@ function updateCard() {
   const tx = colorTexts(naming);
   $('colorName').textContent = tx.name;
   $('colorAlt').textContent = tx.alt;
-  // status: a chip that says where the colour comes from (tap: how it works), then at most a couple
-  // of short messages; what the hint strip already says is not repeated here
-  const st = [];
+  // status: a chip with the source and (as dots) how sure it is; tap it for how it works. Then at
+  // most two short messages, the most important first; the rest is in the explanation sheet.
+  const msgs = [];
   const p = R.patch;
   const tc = tcOn() ? R.tc.last : null;
-  const chip = (text) => `<button class="tag-chip"><svg class="ic"><use href="#i-info"/></svg><span>${esc(text)}</span></button>`;
   const SHOWN_NOTES = ['noAnchor', 'shadow', 'paperClip', 'torchDist', 'torchWeak', 'chartPoor', 'torchAnchor'];
+  let chip;
   if (tcOn()) {
-    // the top bar already says "true colour": the chip says the source and how sure
-    st.push(chip(tc ? t('tc.tagShort', { src: t('tc.tag.' + tc.source), conf: t('tc.conf.' + tc.conf) }) : t('tc.on')));
+    chip = tc ? chipHTML(t('tc.chip.' + tc.source), tc.conf, t('tc.tag.' + tc.source)) : chipHTML(t('tc.on'));
     const amb = ambOf(naming);
-    if (amb) st.push(`<b class="tc-amb">${esc(t('tc.amb.short', { b: BASIC[amb.alt][lang] }))}</b>`);
+    if (amb) msgs.push(`<b class="tc-amb">${esc(t('tc.amb.short', { b: BASIC[amb.alt][lang] }))}</b>`);
+    if (p && p.clipped > 0.35) msgs.push(WARN_SVG + esc(t('warn.over')));
     const notes = (tc ? tc.notes : []).filter((n) => SHOWN_NOTES.includes(n));
-    if (notes.length) st.push(WARN_SVG + esc(t('tc.note.' + notes[0])));
-    if (p && p.clipped > 0.35) st.push(WARN_SVG + esc(t('warn.over')));
-    if (naming.alt && !amb) st.push(esc(t('card.maybe', { x: naming.alt[lang] })));
+    if (notes.length) msgs.push(WARN_SVG + esc(t('tc.note.' + notes[0])));
     const sc = R.tc.screen;
-    if (sc && sc.basicKey !== naming.basicKey) st.push(esc(t('tc.screen', { x: sc.basic[lang] })));
+    if (sc && sc.basicKey !== naming.basicKey) msgs.push(esc(t('tc.screen', { x: sc.basic[lang] })));
+    if (naming.alt && !amb) msgs.push(esc(t('card.maybe', { x: naming.alt[lang] })));
   } else {
-    st.push(chip(t('tag.screen')));
-    if (p && p.clipped > 0.35) st.push(WARN_SVG + esc(t('warn.over')));
-    else if (p && p.Y < 0.012) st.push(WARN_SVG + esc(t('warn.dark')));
-    if (naming.alt) st.push(esc(t('card.maybe', { x: naming.alt[lang] })));
+    chip = chipHTML(t('tc.chip.screen'), null, t('tag.screen'));
+    if (p && p.clipped > 0.35) msgs.push(WARN_SVG + esc(t('warn.over')));
+    else if (p && p.Y < 0.012) msgs.push(WARN_SVG + esc(t('warn.dark')));
+    if (naming.alt) msgs.push(esc(t('card.maybe', { x: naming.alt[lang] })));
   }
   // only touch the DOM when something changed: a button that is replaced every frame cannot be tapped
-  setHTML($('colorStatus'), st[0]);
-  setHTML($('colorMsgs'), st.slice(1).join(' · '));
+  setHTML($('colorStatus'), chip);
+  setHTML($('colorMsgs'), msgs.slice(0, 2).join(' · '));
   $('card').classList.toggle('tc-card', tcOn());
   syncGuide();
   // one line with the values only
@@ -604,7 +619,7 @@ function onNameChanged() { if (S.autoSpeak) speakCurrent(); }
 // ---------------- true colour (真色) ----------------
 // The colour card can show the object's own colour instead of the picture's. Sources: camera only
 // (white anchor), white paper next to the object, torch difference, colour chart. See truecolor.js.
-const TC_SRCS = ['auto', 'camera', 'paper', 'torch', 'chart'];
+const TC_SRCS = ['camera', 'paper', 'torch', 'chart'];
 function camKey() { return camera.deviceId || 'default'; }
 function camCal() { return (S.tc.cams[camKey()] ||= {}); }
 
@@ -630,7 +645,7 @@ function calibNow() {
 function activeChart() {
   if (R.tc.chart && R.kind !== 'camera') return R.tc.chart;
   const lc = R.tc.liveChart;
-  if (lc && R.kind === 'camera' && (S.tc.src === 'auto' || S.tc.src === 'chart') && performance.now() - lc.at < 1300) return lc;
+  if (lc && R.kind === 'camera' && S.tc.src === 'chart' && performance.now() - lc.at < 1300) return lc;
   return null;
 }
 /** Camera-only estimate with the anchor, shadow and mixed-light choices. */
@@ -659,7 +674,7 @@ function trueEstimate(pick) {
   const calib = calibNow();
   const notes = [];
   let e = null;
-  if ((S.tc.src === 'auto' || S.tc.src === 'paper') && paperUsable(st)) {
+  if (S.tc.src === 'paper' && paperUsable(st)) {
     e = paperEstimate(pick.raw, { paper: st.paper.rgb, mean: st.mean, rho: S.tc.rho, ...calib });
   }
   if (!e) {
@@ -754,6 +769,7 @@ function torchPrecheck() {
 }
 
 async function withTorchBusy(fn) {
+  await afStop();
   R.tc.busy = true; syncTCBar();
   try { return await fn(); } finally {
     R.tc.busy = false; camera.torchOn = false;
@@ -997,7 +1013,12 @@ function drawTCMarks(ctx) {
     ctx.lineWidth = 3.5 * d; ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
     ctx.lineWidth = 1.6 * d; ctx.strokeStyle = '#fff'; ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
     ctx.restore();
-    if (text) label(text, Math.max(rc.x * d + 2, Math.min(x0, (rc.x + rc.w) * d - 150 * d)), Math.max((rc.y + 20) * d, y0));
+    if (!text) return;
+    // above the box; inside its top edge when the top bar or the picture edge leaves no room above
+    const visTop = Math.max(rc.y, document.querySelector('.topbar').getBoundingClientRect().bottom) * d;
+    const lh = (12.5 * fs + 12) * d;
+    const ly = y0 - lh < visTop ? Math.max(y0, visTop) + lh + 4 * d : y0;
+    label(text, Math.max(rc.x * d + 2, Math.min(x0 + (ly !== y0 ? 4 * d : 0), (rc.x + rc.w) * d - 150 * d)), ly);
   };
   const pk = R.tc.pick;
   if (pk) {
@@ -1013,7 +1034,7 @@ function drawTCMarks(ctx) {
   const ch = activeChart();
   if (ch) { for (const [x, y] of ch.pts) ring(x, y, 4); return; }
   const st = R.tc.stats, e = R.tc.last;
-  if (!pk && paperUsable(st) && (S.tc.src === 'auto' || S.tc.src === 'paper' || S.tc.src === 'torch')) {
+  if (!pk && paperUsable(st) && (S.tc.src === 'paper' || S.tc.src === 'torch')) {
     // show where the paper was found (a dashed circle)
     const [px, py] = P(st.paper.cx, st.paper.cy);
     ctx.save(); ctx.setLineDash([6 * d, 5 * d]);
@@ -1133,14 +1154,23 @@ function syncHint() {
   el.hidden = !show;
   if (show) {
     el.classList.toggle('step', st.kind === 'step');
-    if ($('hintLine').textContent !== st.line) $('hintLine').textContent = st.line;
+    let changed = false;
+    if ($('hintLine').textContent !== st.line) { $('hintLine').textContent = st.line; changed = true; }
     const html = st.acts.map((a) => actBtn(a)).join('');
-    if ($('hintActions').dataset.html !== html) { $('hintActions').innerHTML = html; $('hintActions').dataset.html = html; }
-    $('hintClose').hidden = st.kind !== 'hint';
+    if ($('hintActions').dataset.html !== html) { $('hintActions').innerHTML = html; $('hintActions').dataset.html = html; changed = true; }
+    if ($('hintClose').hidden !== (st.kind !== 'hint')) { $('hintClose').hidden = st.kind !== 'hint'; changed = true; }
+    if (changed || !R.tc.hintShown) fitHint();
   }
   if (show !== R.tc.hintShown) { R.tc.hintShown = show; requestAnimationFrame(layout); }
   syncInfo();
   requestAnimationFrame(placeFloating);
+}
+/** Button beside the text while the text fits in two lines there, otherwise below it (nothing is cut off). */
+function fitHint() {
+  const el = $('hint'), ln = $('hintLine');
+  if (!el || el.hidden) return;
+  el.classList.remove('stack');
+  if ($('hintActions').childElementCount && ln.scrollHeight > ln.clientHeight + 2) el.classList.add('stack');
 }
 function closeHint() {
   (S.hintsOff ||= {})[hintKey()] = true; save();
@@ -1163,7 +1193,7 @@ function infoActs() {
     acts.push({ label: 'info.adj.anchor', btns: [['rhoWhite', 'tc.btn.rhoWhite', !R.tc.anchorRho], ['rhoLight', 'tc.btn.rhoLight', R.tc.anchorRho === 0.6], ['rhoMid', 'tc.btn.rhoMid', R.tc.anchorRho === 0.35]] });
     if (e.shadowSuspect || R.tc.shadow === 'off') acts.push({ label: 'info.adj.shadow', btns: [['shadowAuto', 'tc.btn.shadowAuto', R.tc.shadow !== 'off'], ['noShadow', 'tc.btn.noShadow', R.tc.shadow === 'off']] });
   }
-  if (S.mode === 'identify' && (S.tc.src === 'auto' || S.tc.src === 'paper' || S.tc.src === 'torch')) {
+  if (S.mode === 'identify' && (S.tc.src === 'paper' || S.tc.src === 'torch')) {
     acts.push({ label: 'info.adj.paper', btns: R.tc.paperAt ? [['paperAuto', 'tc.btn.paperAuto'], ['pickPaper', 'tc.btn.pickPaper']] : [['pickPaper', 'tc.btn.pickPaper']] });
   }
   if (lc && R.kind === 'camera' && (lc.kind === 'cc24' || S.tc.printRef) && lc.residual <= 3) acts.push({ label: 'info.adj.lens', btns: [['saveLens', 'tc.btn.saveLens']] });
@@ -1211,7 +1241,7 @@ function syncTCUI() {
   document.querySelectorAll('#tcRho button').forEach((b) => b.setAttribute('aria-selected', String(+b.dataset.rho === S.tc.rho)));
   document.querySelectorAll('#tcChart button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.chart === S.tc.chart)));
   const src = S.tc.src;
-  $('tcPaperRow').hidden = !(src === 'paper' || src === 'auto' || src === 'torch');
+  $('tcPaperRow').hidden = !(src === 'paper' || src === 'torch');
   $('tcTorchRow').hidden = src !== 'torch';
   $('tcChartRow').hidden = src !== 'chart';
   $('btnPrintCal').hidden = S.tc.chart !== 'print14';
@@ -1229,10 +1259,10 @@ function syncTCStatus() {
   if (!el) return;
   const src = S.tc.src, st = R.tc.stats;
   const parts = [t('tc.desc.' + src)];
-  if (src === 'auto' || src === 'paper' || src === 'torch') {
+  if (src === 'paper' || src === 'torch') {
     parts.push(R.tc.paperAt ? t('tc.stat.paperManual') : paperUsable(st) ? t('tc.stat.paperYes') : st && st.paper && st.paper.clipped ? t('tc.stat.paperClip') : t('tc.stat.paperNo'));
   }
-  if (src === 'auto' || src === 'camera') parts.push(R.tc.anchor && R.tc.anchor.neutral ? t('tc.stat.anchorYes') : t('tc.stat.anchorNo'));
+  if (src === 'camera') parts.push(R.tc.anchor && R.tc.anchor.neutral ? t('tc.stat.anchorYes') : t('tc.stat.anchorNo'));
   if (src === 'torch') {
     const ts = torchState();
     parts.push(!ts.live ? t('tc.stat.needLive') : !ts.torch ? t('tc.stat.noTorch')
@@ -1302,15 +1332,15 @@ function guideContent() {
     }
     if (Number.isFinite(R.tc.noise) && R.kind !== 'photo') facts.push(li('g.f.noise', { n: R.tc.noise.toExponential(1) }));
     const [dL, dC] = uncertaintyOf(e, { residual: e.residual, calibrated: e.calibrated });
+    facts.push(li('g.f.conf', { c: t('tc.conf.' + e.conf) }));
     facts.push(li('g.f.range', { l: pct(dL), c: pct(dC) }));
     if (R.tc.amb) facts.push(li('g.f.amb', { a: BASIC[R.tc.amb.main][lang], b: BASIC[R.tc.amb.alt][lang] }));
   }
   if (R.kind === 'frozen' && R.tc.freezeInfo) {
     const fi = R.tc.freezeInfo;
-    line += t('g.frozen', { n: fi.frames });
     facts.push(li('g.f.frozen', { n: fi.frames, d: fi.dropped }));
   }
-  if (R.kind === 'photo') { line += t('g.photo'); facts.push(li('g.f.photo')); }
+  if (R.kind === 'photo') facts.push(li('g.f.photo'));
   const more = H('g.h.how') + principle + (facts.length ? H('g.h.now') + `<ul>${facts.join('')}</ul>` : '')
     + H('g.h.tips') + tips + H('g.h.why') + P('g.why');
   return { line, more };
@@ -1404,7 +1434,7 @@ function gpuParamsNow() {
   const st = R.tc.stats;
   if (!st) return null;
   const calib = calibNow();
-  if ((S.tc.src === 'auto' || S.tc.src === 'paper' || S.tc.src === 'torch') && paperUsable(st)) {
+  if ((S.tc.src === 'paper' || S.tc.src === 'torch') && paperUsable(st)) {
     return gpuParams('paper', { paper: st.paper.rgb, mean: st.mean, rho: S.tc.rho, ...calib });
   }
   return gpuParams('camera', { gains: wbGains(), mean: st.mean, anchor: R.tc.anchor, anchorRho: R.tc.anchorRho, ...calib });
@@ -1432,6 +1462,7 @@ function frame(now) {
       R.lastAnalysis = now; R.dirty = false;
       try { analyze(); } catch (e) { console.error(e); }
     }
+    if (R.kind === 'camera') afTick(now);
   }
   requestAnimationFrame(frame);
 }
@@ -1440,6 +1471,133 @@ function watchVideoFrames() {
   if (!('requestVideoFrameCallback' in HTMLVideoElement.prototype)) return;
   const cb = () => { if (R.kind === 'camera') R.newFrame = true; video.requestVideoFrameCallback(cb); };
   video.requestVideoFrameCallback(cb);
+}
+
+// ---------------- focus (see focus.js) ----------------
+// Lock focus: once at the reticle when the camera starts, again when the user taps the picture,
+// and when the phone was pointed at something else and is held still. The camera's own continuous
+// autofocus is used where the browser does not allow setting the lens position, when the user
+// chose it, and whenever the search finds nothing to focus on.
+const AF = { gen: 0, running: null, D: null, lockedD: null, manual: false, locked: false, pos: null, watch: new RefocusWatch(), lastRun: 0, lastTick: 0, fails: 0, sim: null, log: [] };
+const afCanvas = document.createElement('canvas');
+afCanvas.width = afCanvas.height = 96;
+const afCtx = afCanvas.getContext('2d', { willReadFrequently: true });
+function afCaps() { return R.kind === 'camera' && camera.live ? focusCaps(camera.caps) : { manual: false }; }
+const afBad = () => !!(S.focusBad && S.focusBad[camKey()]);
+const afWanted = () => S.focus === 'lock' && !afBad();
+/** Sharpness around a point of the picture: 'fine' = 96 camera pixels 1:1, 'coarse' = a third of the frame, scaled down. */
+function afSample(pos, scale) {
+  const c = crop();
+  if (!c || !video.videoWidth) return null;
+  const x = mirrored() ? 1 - pos.x : pos.x;
+  const cx = c.x + x * c.w, cy = c.y + pos.y * c.h;
+  const side = Math.min(c.sw, c.sh, scale === 'coarse' ? Math.max(96, 0.34 * Math.min(c.w, c.h)) : 96);
+  const sx = Math.max(0, Math.min(c.sw - side, cx - side / 2)), sy = Math.max(0, Math.min(c.sh - side, cy - side / 2));
+  afCtx.imageSmoothingQuality = 'high';
+  try { afCtx.drawImage(video, sx, sy, side, side, 0, 0, 96, 96); return sharpnessOf(afCtx.getImageData(0, 0, 96, 96).data, 96, 96); } catch { return null; }
+}
+async function afMeasure(pos, scale) {
+  if (AF.sim) { await sleep(5); return AF.sim(AF.D, scale); } // tests: a simulated lens
+  for (let k = 0; k < 3; k++) await nextVideoFrame(); // the lens moves and the new frames come through
+  let a = 0, n = 0;
+  for (let k = 0; k < 2; k++) {
+    if (k) await nextVideoFrame();
+    const v = afSample(pos, scale);
+    if (v) { a += v.fine; n++; }
+  }
+  return n ? a / n : null;
+}
+async function afApply(c) {
+  AF.log.push(c);
+  if (AF.log.length > 60) AF.log.shift();
+  const tr = camera.track;
+  if (!tr) return false;
+  try { await tr.applyConstraints({ advanced: [c] }); return true; } catch { return false; }
+}
+async function afSetD(D, fc) {
+  if (!(await afApply({ focusMode: 'manual', focusDistance: distanceFor(D, fc) }))) return false;
+  AF.D = D; AF.manual = true;
+  return true;
+}
+async function afContinuous() {
+  const was = AF.manual;
+  AF.manual = false; AF.D = null; AF.lockedD = null; AF.locked = false;
+  if (was || AF.sim) await afApply({ focusMode: 'continuous' });
+}
+/** Stop a running search (before the torch measurement, freezing, a photo). */
+async function afStop() {
+  AF.gen++;
+  if (!AF.running) return;
+  await AF.running.catch(() => {});
+  // a search cut short leaves the lens anywhere: back to the last good position
+  const fc = afCaps();
+  if (AF.manual && fc.manual) { if (AF.lockedD != null) await afSetD(AF.lockedD, fc); else await afContinuous(); }
+}
+function afReset() { AF.gen++; AF.D = null; AF.lockedD = null; AF.manual = false; AF.locked = false; AF.pos = null; AF.watch.reset(); AF.fails = 0; setFocusing(false); }
+function setFocusing(on, p) {
+  const r = $('afRing');
+  if (!r) return;
+  r.hidden = !on;
+  if (on && p) { r.style.left = `${R.rect.x + p.x * R.rect.w}px`; r.style.top = `${R.rect.y + p.y * R.rect.h}px`; }
+  app.classList.toggle('focusing', !!on);
+}
+/** Focus at a point of the picture. mode 'full' sweeps the whole range, 'local' starts from the current position. */
+async function focusAt(pos = R.reticle, mode = 'local') {
+  const fc = afCaps();
+  if (!fc.manual || !afWanted() || R.tc.busy || R.freezing) return false;
+  const gen = ++AF.gen;
+  if (AF.running) await AF.running.catch(() => {});
+  if (gen !== AF.gen) return false;
+  const p = { x: pos.x, y: pos.y };
+  const aborted = () => gen !== AF.gen || R.kind !== 'camera' || R.tc.busy || R.freezing || !camera.live;
+  let result = false;
+  const run = (async () => {
+    setFocusing(true, p);
+    // how sharp the camera's own autofocus got it: the search must do at least about as well
+    const ref = !AF.manual && !AF.sim ? await afMeasure(p, 'fine') : null;
+    const res = await findFocus({ fc, mode: AF.D == null ? 'full' : mode, D0: AF.D, aborted, setD: (D) => afSetD(D, fc), measure: (k) => afMeasure(p, k) });
+    if (gen !== AF.gen) return;
+    if (res.ok && ref != null && res.score < 0.8 * ref) { res.ok = false; res.worse = true; }
+    if (res.ok) {
+      AF.locked = true; AF.lockedD = res.D; AF.fails = 0; AF.pos = p; AF.lastRun = performance.now();
+      const s0 = afSample(p, 'coarse');
+      AF.watch.reset(s0 ? s0.sig : null);
+      result = true;
+    } else if (!res.aborted) {
+      // nothing to focus on, or the camera did not follow: give the focus back to the camera
+      await afContinuous();
+      if ((res.failed || res.worse) && ++AF.fails >= 2) { (S.focusBad ||= {})[camKey()] = true; save(); syncFocusUI(); }
+    }
+  })();
+  AF.running = run;
+  try { await run; } finally { if (AF.running === run) { AF.running = null; setFocusing(false); } }
+  return result;
+}
+/** Called every frame: refocus when the phone was pointed at something else and is now still. */
+function afTick(now) {
+  if (!AF.locked || AF.running || R.kind !== 'camera' || R.tc.busy || R.freezing || now - AF.lastTick < 350) return;
+  AF.lastTick = now;
+  if (now - AF.lastRun < 1500) return;
+  const p = AF.pos || R.reticle;
+  if (AF.watch.push(afSample(p, 'coarse'), now)) focusAt(p, 'local');
+}
+function setFocusMode(v) {
+  if (v !== 'lock' && v !== 'auto') return;
+  S.focus = v; save();
+  if (v === 'auto') afStop().then(afContinuous);
+  else { if (S.focusBad) delete S.focusBad[camKey()]; save(); focusAt(R.reticle, 'full'); }
+  syncFocusUI();
+}
+function syncFocusUI() {
+  const fc = afCaps();
+  const seg = $('focusSeg');
+  if (!seg) return;
+  seg.querySelectorAll('button').forEach((b) => {
+    b.setAttribute('aria-selected', String(b.dataset.focus === (fc.manual && !afBad() ? S.focus : 'auto')));
+    b.disabled = !fc.manual;
+  });
+  $('focusDesc').textContent = !fc.manual ? t('cam.focus.no') : afBad() ? t('cam.focus.bad') : t('cam.focus.desc');
+  $('btnFocusRetry').hidden = !(fc.manual && afBad());
 }
 
 // ---------------- sources ----------------
@@ -1454,6 +1612,8 @@ async function startCamera(opts = {}) {
     await camera.start(want);
     if (R.kind === 'photo' && R.photoAt > startedAt) { camera.stop(); return false; }
     R.source = video; R.kind = 'camera'; R.newFrame = true; R.smooth = null; R.shownKey = null; R.zoom = 1;
+    afReset();
+    setTimeout(() => { if (R.kind === 'camera' && !AF.locked && !AF.running) focusAt(R.reticle, 'full'); }, 900);
     if (R.camFail) delete R.camFail[camera.deviceId];
     S.camId = camera.deviceId; S.camFacing = camera.facing; save();
     $('start').hidden = true;
@@ -1499,6 +1659,7 @@ async function startCamera(opts = {}) {
  */
 async function freeze() {
   if (R.kind !== 'camera' || R.freezing) return;
+  await afStop();
   const [w, h] = sourceSize();
   if (!w) return;
   const c = R.frozenCanvas || (R.frozenCanvas = document.createElement('canvas'));
@@ -1567,6 +1728,7 @@ function resumeLive() {
 
 async function loadPhoto(file) {
   if (!file) return;
+  afStop();
   const url = URL.createObjectURL(file);
   try {
     const img = new Image();
@@ -1643,6 +1805,7 @@ function friendlyNames(cams) {
 
 async function openCamSheet() {
   $('camSheet').hidden = false;
+  syncFocusUI();
   syncFrameUI();
   const list = $('camList');
   const cams = await camera.list();
@@ -1814,7 +1977,8 @@ function updateToolbar() {
   const torch = $('btnTorch');
   torch.disabled = !(R.kind === 'camera' && camera.torchSupported);
   torch.classList.toggle('on', camera.torchOn && !torch.disabled);
-  $('wbBadge').textContent = tcOn() ? t('wb.badge.tc') : t('wb.badge.' + S.wbMode);
+  $('wbBadge').textContent = tcOn() ? '' : t('wb.badge.' + S.wbMode);
+  $('wbBadge').hidden = tcOn();
   $('btnWBTool').classList.toggle('on', !$('wbPop').hidden);
 }
 
@@ -1869,6 +2033,7 @@ function syncSettingsUI() {
   $('optBilingual').checked = S.bilingual; $('optOutline').checked = S.outline; $('optDim').checked = S.dim;
   $('optValues').checked = S.values; $('optAutoSpeak').checked = S.autoSpeak;
   document.querySelectorAll('#textSizeSeg button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.size === S.textSize)));
+  syncFocusUI();
 }
 
 function syncWBUI() {
@@ -2027,7 +2192,9 @@ function bind() {
   }));
   $('btnTorch').addEventListener('click', async () => { await camera.setTorch(!camera.torchOn); updateToolbar(); });
   $('btnSpeak').addEventListener('click', speakCurrent);
-  $('btnRecenter').addEventListener('click', () => setReticle(0.5, 0.5));
+  $('btnRecenter').addEventListener('click', () => { setReticle(0.5, 0.5); focusAt(R.reticle); });
+  $('focusSeg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b && !b.disabled) setFocusMode(b.dataset.focus); });
+  $('btnFocusRetry').addEventListener('click', () => setFocusMode('lock'));
   $('colorSub').addEventListener('click', (e) => {
     const hex = e.target.dataset && e.target.dataset.hex;
     if (hex && navigator.clipboard) navigator.clipboard.writeText(hex).then(() => toast(t('toast.copied', { x: hex })), () => {});
@@ -2182,9 +2349,13 @@ function bindGestures() {
           S.cpCollapsed = true; save(); syncCorrectUI(); updateZoomChips(); tap = null; return;
         }
         if (wbOpen() && S.wbMode !== 'manual') setWBOpen(false);
-        if (!idVisible() && !wbOpen()) { tap = null; return; } // Correct mode: no reticle (except to aim the white card)
-        if (now - lastTap < 320) { setReticle(0.5, 0.5); lastTap = 0; }
-        else if (inRect(tap.x, tap.y)) { setReticle((tap.x - R.rect.x) / R.rect.w, (tap.y - R.rect.y) / R.rect.h); lastTap = now; }
+        if (!idVisible() && !wbOpen()) {
+          // Correct mode: no reticle (except to aim the white card); a tap focuses there
+          if (inRect(tap.x, tap.y)) focusAt({ x: (tap.x - R.rect.x) / R.rect.w, y: (tap.y - R.rect.y) / R.rect.h });
+          tap = null; return;
+        }
+        if (now - lastTap < 320) { setReticle(0.5, 0.5); lastTap = 0; focusAt(R.reticle); }
+        else if (inRect(tap.x, tap.y)) { setReticle((tap.x - R.rect.x) / R.rect.w, (tap.y - R.rect.y) / R.rect.h); lastTap = now; focusAt(R.reticle); }
       }
       tap = null; dragSplit = false; swipe = null;
     }
@@ -2281,6 +2452,7 @@ window.__cvh = {
   S, R, analyze, setReticle, setMode, freeze, setLanguage, setSens, setWBMode, calibrateWB, camera, layout,
   setTC, setTCSource, startChartPick, chartTap, measureTorch, calibrateTorch, resumeLive, startPaperPick, setPaperAt,
   setScene, startValidation, openValidation, loadRuns, guideContent, updateGpuTC, trueEstimate,
+  AF, focusAt, setFocusMode, afSample,
 };
 
 boot();

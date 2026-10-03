@@ -53,6 +53,7 @@
     <canvas id="overlay" aria-hidden="true"></canvas>
     <div id="frame" aria-hidden="true"></div>
     <div id="reticle" aria-hidden="true"><span id="retShape"></span><span class="ring"></span><span class="tip" data-i18n="wb.aim"></span></div>
+    <div id="afRing" aria-hidden="true" hidden></div>
     <div id="splitLabels" hidden><span data-i18n="cvd.split.left"></span><span data-i18n="cvd.split.right"></span></div>
 
     <header class="topbar">
@@ -140,7 +141,6 @@
         <div id="tcBox" class="pop-box" hidden>
           <div class="pop-label" data-i18n="tc.srcLabel"></div>
           <div class="chips tc-src" id="tcSrc">
-            <button data-src="auto" data-i18n="tc.src.auto"></button>
             <button data-src="camera" data-i18n="tc.src.camera"></button>
             <button data-src="paper" data-i18n="tc.src.paper"></button>
             <button data-src="torch" data-i18n="tc.src.torch"></button>
@@ -194,8 +194,10 @@
 
       <!-- one strip for hints (closable, remembered) and for steps that need the user (always shown) -->
       <section id="hint" class="hint" hidden aria-live="polite">
-        <button id="hintText" class="hint-text" data-i18n-aria="info.open"><svg class="ic"><use href="#i-info"/></svg><span id="hintLine"></span></button>
-        <span id="hintActions" class="hint-actions"></span>
+        <div class="hint-body">
+          <button id="hintText" class="hint-text" data-i18n-aria="info.open"><svg class="ic"><use href="#i-info"/></svg><span id="hintLine"></span></button>
+          <span id="hintActions" class="hint-actions"></span>
+        </div>
         <button id="hintClose" class="hint-close" data-i18n-aria="hint.close"><svg class="ic"><use href="#i-close"/></svg></button>
       </section>
 
@@ -325,6 +327,15 @@
             <button data-frame="fill"><b data-i18n="cam.fill"></b><small data-i18n="cam.fill.sub"></small></button>
           </div>
           <p class="desc" data-i18n="cam.hint"></p>
+        </div>
+        <div class="srow" id="focusRow">
+          <div class="label" data-i18n="cam.focus"></div>
+          <div class="seg seg-wide" id="focusSeg">
+            <button data-focus="lock" data-i18n="cam.focus.lock"></button>
+            <button data-focus="auto" data-i18n="cam.focus.auto"></button>
+          </div>
+          <p class="desc" id="focusDesc"></p>
+          <button id="btnFocusRetry" class="chip-btn" data-i18n="cam.focus.retry" hidden></button>
         </div>
       </div>
     </section>
